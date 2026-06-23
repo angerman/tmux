@@ -162,6 +162,7 @@ dist_tmux_SOURCES = \
 	file.c \
 	format.c \
 	format-draw.c \
+	fuzzy.c \
 	grid-reader.c \
 	grid-view.c \
 	grid.c \
@@ -215,6 +216,7 @@ dist_tmux_SOURCES = \
 	window-clock.c \
 	window-copy.c \
 	window-customize.c \
+	window-switch.c \
 	window-tree.c \
 	window-visible.c \
 	window.c \

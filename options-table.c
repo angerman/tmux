@@ -1479,6 +1479,14 @@ const struct options_table_entry options_table[] = {
 		  "history when clearing the whole screen."
 	},
 
+	{ .name = "switch-mode-filter-format",
+	  .type = OPTIONS_TABLE_STRING,
+	  .scope = OPTIONS_TABLE_WINDOW|OPTIONS_TABLE_PANE,
+	  .default_str = "#[fill=yellow bg=yellow fg=black]"
+	                 "filter: #{filter}",
+	  .text = "Format of the preview indicator in switch mode."
+	},
+
 	{ .name = "synchronize-panes",
 	  .type = OPTIONS_TABLE_FLAG,
 	  .scope = OPTIONS_TABLE_WINDOW|OPTIONS_TABLE_PANE,

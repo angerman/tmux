@@ -689,7 +689,8 @@ mode_tree_add(struct mode_tree_data *mtd, struct mode_tree_item *parent,
 	mti->itemdata = itemdata;
 
 	mti->tag = tag;
-	mti->name = xstrdup(name);
+	if (name != NULL)
+		mti->name = xstrdup(name);
 	if (text != NULL)
 		mti->text = xstrdup(text);
 
@@ -732,8 +733,8 @@ mode_tree_no_tag(struct mode_tree_item *mti)
 }
 
 /*
- * Set the alignment of mti->name: -1 to align left, 0 (default) to not align,
- * or 1 to align right.
+ * Set the alignment of the item name: -1 to align left, 0 (default) to not
+ * align, or 1 to align right.
  */
 void
 mode_tree_align(struct mode_tree_item *mti, int align)
@@ -797,6 +798,7 @@ mode_tree_draw(struct mode_tree_data *mtd)
 		line = &mtd->line_list[i];
 		mti = line->item;
 		if (mti->align &&
+		    mti->name != NULL &&
 		    (int)strlen(mti->name) > alignlen[line->depth])
 			alignlen[line->depth] = strlen(mti->name);
 	}
@@ -851,8 +853,9 @@ mode_tree_draw(struct mode_tree_data *mtd)
 		else
 			tag = "";
 		xasprintf(&text, "%-*s%s%*s%s%s", keylen, key, start,
-		    mti->align * alignlen[line->depth], mti->name, tag,
-		    (mti->text != NULL) ? ": " : "" );
+		    mti->align * alignlen[line->depth],
+		    (mti->name != NULL ? mti->name : ""), tag,
+		    (mti->name != NULL && mti->text != NULL ? ": " : ""));
 		width = utf8_cstrwidth(text);
 		if (width > w)
 			width = w;
