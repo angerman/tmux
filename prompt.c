@@ -122,6 +122,28 @@ prompt_free(struct prompt *pr)
 	}
 }
 
+/*
+ * Fire the input callback. Returns one if the prompt is finished or zero if
+ * still open.
+ */
+static int
+prompt_fire_callback(struct prompt *pr, struct client *c, const char *s,
+    enum prompt_key_result type, int *redraw)
+{
+	enum prompt_result	result;
+
+	result = pr->inputcb(c, pr->data, s, type);
+	if (c->prompt != pr) /* prompt has been replaced */
+		return (1);
+	if (result == PROMPT_CLOSE) {
+		pr->closed = 1;
+		return (1);
+	}
+	if (redraw != NULL)
+		*redraw = 1;
+	return (0);
+}
+
 /* Start prompt. */
 void
 prompt_start(struct prompt *pr, struct client *c)
@@ -131,7 +153,7 @@ prompt_start(struct prompt *pr, struct client *c)
 	if (pr->flags & PROMPT_INCREMENTAL) {
 		tmp = utf8_tocstr(pr->buffer);
 		xasprintf(&cp, "=%s", tmp);
-		pr->inputcb(c, pr->data, cp, PROMPT_KEY_HANDLED);
+		prompt_fire_callback(pr, c, cp, PROMPT_KEY_HANDLED, NULL);
 		free(cp);
 		free(tmp);
 	}
@@ -789,24 +811,8 @@ prompt_backward_word(struct prompt *pr, const char *separators)
 static enum prompt_key_result
 prompt_done(struct prompt *pr, struct client *c, const char *s, int *redraw)
 {
-	void			*pd = pr->data;
-	enum prompt_result	 result;
-
-	result = pr->inputcb(c, pd, s, PROMPT_KEY_CLOSE);
-
-	/*
-	 * The callback may have replaced the prompt with a new one - for
-	 * example by running a command which itself opens a prompt. If so, pr
-	 * has been freed and the new prompt must be left open.
-	 */
-	if (c->prompt != pr)
+	if (prompt_fire_callback(pr, c, s, PROMPT_KEY_CLOSE, redraw))
 		return (PROMPT_KEY_CLOSE);
-
-	if (result == PROMPT_CLOSE) {
-		pr->closed = 1;
-		return (PROMPT_KEY_CLOSE);
-	}
-	*redraw = 1;
 	return (PROMPT_KEY_HANDLED);
 }
 
@@ -814,7 +820,6 @@ prompt_done(struct prompt *pr, struct client *c, const char *s, int *redraw)
 static enum prompt_key_result
 prompt_check_move(struct prompt *pr, struct client *c, key_code key)
 {
-	void	*pd = pr->data;
 	char	*s;
 
 	if (~pr->flags & PROMPT_INCREMENTAL)
@@ -831,8 +836,7 @@ prompt_check_move(struct prompt *pr, struct client *c, key_code key)
 		return (PROMPT_KEY_NOT_HANDLED);
 	}
 	s = utf8_tocstr(pr->buffer);
-	if (pr->inputcb(c, pd, s, PROMPT_KEY_MOVE) == PROMPT_CLOSE) {
-		pr->closed = 1;
+	if (prompt_fire_callback(pr, c, s, PROMPT_KEY_MOVE, NULL)) {
 		free(s);
 		return (PROMPT_KEY_CLOSE);
 	}
@@ -844,7 +848,6 @@ prompt_check_move(struct prompt *pr, struct client *c, key_code key)
 enum prompt_key_result
 prompt_key(struct prompt *pr, struct client *c, key_code key, int *redraw)
 {
-	void			*pd = pr->data;
 	struct options		*oo = c->session->options;
 	char			*s, *cp, prefix = '=';
 	const char		*histstr, *separators = NULL, *ks;
@@ -856,8 +859,8 @@ prompt_key(struct prompt *pr, struct client *c, key_code key, int *redraw)
 	pr->closed = 0;
 	if (pr->flags & PROMPT_KEY) {
 		ks = key_string_lookup_key(key, 0);
-		pr->inputcb(c, pd, ks, PROMPT_KEY_CLOSE);
-		pr->closed = 1;
+		if (!prompt_fire_callback(pr, c, ks, PROMPT_KEY_CLOSE, NULL))
+			pr->closed = 1;
 		return (PROMPT_KEY_CLOSE);
 	}
 	size = utf8_strlen(pr->buffer);
@@ -869,8 +872,8 @@ prompt_key(struct prompt *pr, struct client *c, key_code key, int *redraw)
 		if (key >= '0' && key <= '9')
 			goto append_key;
 		s = utf8_tocstr(pr->buffer);
-		pr->inputcb(c, pd, s, PROMPT_KEY_CLOSE);
-		pr->closed = 1;
+		if (!prompt_fire_callback(pr, c, s, PROMPT_KEY_CLOSE, NULL))
+			pr->closed = 1;
 		free(s);
 		return (PROMPT_KEY_NOT_HANDLED);
 	}
@@ -1161,7 +1164,7 @@ changed:
 	if (pr->flags & PROMPT_INCREMENTAL) {
 		s = utf8_tocstr(pr->buffer);
 		xasprintf(&cp, "%c%s", prefix, s);
-		pr->inputcb(c, pd, cp, PROMPT_KEY_HANDLED);
+		prompt_fire_callback(pr, c, cp, PROMPT_KEY_HANDLED, NULL);
 		free(cp);
 		free(s);
 	}
