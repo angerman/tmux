@@ -3698,7 +3698,7 @@ void	 mode_tree_remove(struct mode_tree_data *, struct mode_tree_item *);
 void	 mode_tree_draw(struct mode_tree_data *);
 int	 mode_tree_key(struct mode_tree_data *, struct client *, key_code *,
 	     struct mouse_event *, u_int *, u_int *);
-int	 mode_tree_set_prompt(struct mode_tree_data *, struct client *,
+void	 mode_tree_set_prompt(struct mode_tree_data *, struct client *,
 	     const char *, const char *, enum prompt_type, int,
 	     prompt_input_cb, prompt_free_cb, void *);
 void	 mode_tree_clear_prompt(struct mode_tree_data *);

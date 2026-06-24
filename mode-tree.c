@@ -1003,8 +1003,8 @@ void
 mode_tree_clear_prompt(struct mode_tree_data *mtd)
 {
 	if (mtd->prompt != NULL) {
-		prompt_free(mtd->prompt);
 		mtd->prompt = NULL;
+		prompt_free(mtd->prompt);
 		mtd->screen.mode &= ~MODE_CURSOR;
 	}
 }
@@ -1037,14 +1037,19 @@ mode_tree_prompt_free_callback(void *data)
 	free(mtp);
 }
 
-int
+void
 mode_tree_set_prompt(struct mode_tree_data *mtd, struct client *c,
     const char *prompt, const char *input, enum prompt_type type, int flags,
     prompt_input_cb inputcb, prompt_free_cb freecb, void *data)
 {
-	struct options			*oo = c->session->options;
+	struct options			*oo;
 	struct prompt_create_data	 pd;
 	struct mode_tree_prompt		*mtp;
+
+	if (c->session != NULL)
+		oo = c->session->options;
+	else
+		oo = global_s_options;
 
 	mode_tree_clear_prompt(mtd);
 
@@ -1069,7 +1074,6 @@ mode_tree_set_prompt(struct mode_tree_data *mtd, struct client *c,
 
 	mode_tree_draw(mtd);
 	mtd->wp->flags |= PANE_REDRAW;
-	return (1);
 }
 
 static struct mode_tree_item *
