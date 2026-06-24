@@ -442,6 +442,7 @@ window_switch_key(struct window_mode_entry *wme, struct client *c,
 		/* FALLTHROUGH */
 	case '\033': /* Escape */
 	case '['|KEYC_CTRL:
+	case 'c'|KEYC_CTRL:
 	case 'g'|KEYC_CTRL:
 		window_pane_reset_mode(wp);
 		return;
