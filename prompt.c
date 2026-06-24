@@ -42,6 +42,9 @@ struct prompt {
 	int			 flags;
 	enum prompt_type	 type;
 	u_int			 menu_x;
+	u_int			 menu_y;
+	u_int			 menu_height;
+	int			 menu_above;
 	int			 closed;
 };
 
@@ -328,6 +331,19 @@ prompt_draw(struct prompt *pr, struct client *c, struct screen_write_ctx *ctx,
 			break;
 	}
 	prompt_redraw_quote(pr, pcursor, ctx, offset, pwidth, &width, &gc);
+}
+
+/*
+ * Set the position used to place the completion menu. The caller knows where
+ * the prompt is drawn (which need not be on the status line) and how much room
+ * is available above or below it.
+ */
+void
+prompt_set_menu(struct prompt *pr, u_int y, u_int height, int above)
+{
+	pr->menu_y = y;
+	pr->menu_height = height;
+	pr->menu_above = above;
 }
 
 /* Is this a separator? */
@@ -1265,11 +1281,11 @@ prompt_complete_list_menu(struct prompt *pr, struct client *c, char **list,
 	struct menu		*menu;
 	struct menu_item	 item;
 	struct prompt_menu	*pm;
-	u_int			 lines = status_line_size(c), height, i, py;
+	u_int			 height, i, py;
 
 	if (size <= 1)
 		return (0);
-	if (c->tty.sy - lines < 3)
+	if (pr->menu_height < 1)
 		return (0);
 
 	pm = xmalloc(sizeof *pm);
@@ -1278,7 +1294,7 @@ prompt_complete_list_menu(struct prompt *pr, struct client *c, char **list,
 	pm->size = size;
 	pm->list = list;
 
-	height = c->tty.sy - lines - 2;
+	height = pr->menu_height;
 	if (height > 10)
 		height = 10;
 	if (height > size)
@@ -1293,10 +1309,10 @@ prompt_complete_list_menu(struct prompt *pr, struct client *c, char **list,
 		menu_add_item(menu, &item, NULL, c, NULL);
 	}
 
-	if (options_get_number(c->session->options, "status-position") == 0)
-		py = lines;
+	if (pr->menu_above)
+		py = pr->menu_y - height - 2;
 	else
-		py = c->tty.sy - 3 - height;
+		py = pr->menu_y + 1;
 	offset += pr->menu_x;
 	if (offset > 2)
 		offset -= 2;

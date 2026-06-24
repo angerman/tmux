@@ -596,6 +596,21 @@ status_prompt_update(struct client *c, const char *msg, const char *input)
 	c->flags |= CLIENT_REDRAWSTATUS;
 }
 
+/* Get the screen line on which the prompt is drawn. */
+static u_int
+status_prompt_screen_line(struct client *c)
+{
+	struct tty	*tty = &c->tty;
+	u_int		 n;
+
+	if (options_get_number(c->session->options, "status-position") == 0)
+		return (status_prompt_line_at(c));
+	n = status_line_size(c) - status_prompt_line_at(c);
+	if (n <= tty->sy)
+		return (tty->sy - n);
+	return (tty->sy - 1);
+}
+
 /* Draw client prompt on status line of present else on last line. */
 int
 status_prompt_redraw(struct client *c)
@@ -603,7 +618,9 @@ status_prompt_redraw(struct client *c)
 	struct status_line	*sl = &c->status;
 	struct screen_write_ctx	 ctx;
 	struct screen		 old_screen;
-	u_int			 lines, promptline, ax, aw;
+	u_int			 lines, slines = status_line_size(c), ax, aw;
+	u_int			 my = status_prompt_screen_line(c), promptline;
+	u_int			 mh;
 
 	if (c->tty.sx == 0 || c->tty.sy == 0)
 		return (0);
@@ -619,6 +636,15 @@ status_prompt_redraw(struct client *c)
 		promptline = lines - 1;
 
 	status_message_area(c, &ax, &aw);
+
+	if (c->tty.sy >= slines + 3)
+		mh = c->tty.sy - slines - 2;
+	else
+		mh = 0;
+	if (options_get_number(c->session->options, "status-position") != 0)
+		prompt_set_menu(c->prompt, my, mh, 1);
+	else
+		prompt_set_menu(c->prompt, my, mh, 0);
 
 	screen_write_start(&ctx, sl->active);
 	screen_write_fast_copy(&ctx, &sl->screen, 0, 0, c->tty.sx, lines);
@@ -637,18 +663,7 @@ status_prompt_redraw(struct client *c)
 void
 status_prompt_cursor(struct client *c, u_int *cx, u_int *cy)
 {
-	struct tty	*tty = &c->tty;
-	u_int		 n;
-
-	if (options_get_number(c->session->options, "status-position") == 0)
-		*cy = status_prompt_line_at(c);
-	else {
-		n = status_line_size(c) - status_prompt_line_at(c);
-		if (n <= tty->sy)
-			*cy = tty->sy - n;
-		else
-			*cy = tty->sy - 1;
-	}
+	*cy = status_prompt_screen_line(c);
 	*cx = c->status.prompt_cx;
 }
 
