@@ -27,7 +27,7 @@
 static char	*prompt_find_history_file(void);
 static void	 prompt_add_typed_history(char *);
 
-/* Status prompt history. */
+/* Prompt history. */
 static char	**prompt_hlist[PROMPT_NTYPES];
 static u_int	  prompt_hsize[PROMPT_NTYPES];
 
@@ -74,7 +74,7 @@ prompt_add_typed_history(char *line)
 		prompt_add_history(line, type);
 }
 
-/* Load status prompt history from file. */
+/* Load prompt history from file. */
 void
 prompt_load_history(void)
 {
@@ -114,7 +114,7 @@ prompt_load_history(void)
 	fclose(f);
 }
 
-/* Save status prompt history to file. */
+/* Save prompt history to file. */
 void
 prompt_save_history(void)
 {

@@ -1173,7 +1173,7 @@ changed:
 
 /* Add to completion list. */
 static void
-prompt_add_list(char ***list, u_int *size, const char *s)
+prompt_complete_add(char ***list, u_int *size, const char *s)
 {
 	u_int	i;
 
@@ -1187,7 +1187,7 @@ prompt_add_list(char ***list, u_int *size, const char *s)
 
 /* Build completion list. */
 static char **
-prompt_complete_list(u_int *size, const char *s)
+prompt_complete_commands(u_int *size, const char *s)
 {
 	char				**list = NULL, *tmp;
 	const char			*value, *cp;
@@ -1199,10 +1199,10 @@ prompt_complete_list(u_int *size, const char *s)
 	*size = 0;
 	for (cmdent = cmd_table; *cmdent != NULL; cmdent++) {
 		if (strncmp((*cmdent)->name, s, slen) == 0)
-			prompt_add_list(&list, size, (*cmdent)->name);
+			prompt_complete_add(&list, size, (*cmdent)->name);
 		if ((*cmdent)->alias != NULL &&
 		    strncmp((*cmdent)->alias, s, slen) == 0)
-			prompt_add_list(&list, size, (*cmdent)->alias);
+			prompt_complete_add(&list, size, (*cmdent)->alias);
 	}
 	o = options_get_only(global_options, "command-alias");
 	if (o != NULL) {
@@ -1216,7 +1216,7 @@ prompt_complete_list(u_int *size, const char *s)
 				goto next;
 
 			xasprintf(&tmp, "%.*s", (int)valuelen, value);
-			prompt_add_list(&list, size, tmp);
+			prompt_complete_add(&list, size, tmp);
 			free(tmp);
 
 		next:
@@ -1272,7 +1272,7 @@ prompt_menu_callback(__unused struct menu *menu, u_int idx, key_code key,
 
 /* Show complete word menu. */
 static int
-prompt_complete_list_menu(struct prompt *pr, struct client *c, char **list,
+prompt_complete_menu(struct prompt *pr, struct client *c, char **list,
     u_int size, u_int offset)
 {
 	struct menu		*menu;
@@ -1347,7 +1347,7 @@ prompt_complete(struct prompt *pr, struct client *c, const char *word,
 	    *word == '\0')
 		return (NULL);
 
-	list = prompt_complete_list(&size, word);
+	list = prompt_complete_commands(&size, word);
 	if (size == 0)
 		out = NULL;
 	else if (size == 1)
@@ -1366,7 +1366,7 @@ prompt_complete(struct prompt *pr, struct client *c, const char *word,
 		out = NULL;
 	}
 	if (out != NULL ||
-	    !prompt_complete_list_menu(pr, c, list, size, offset)) {
+	    !prompt_complete_menu(pr, c, list, size, offset)) {
 		for (i = 0; i < size; i++)
 			free(list[i]);
 		free(list);
