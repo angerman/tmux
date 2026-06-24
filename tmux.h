@@ -3190,7 +3190,7 @@ void	 status_prompt_update(struct client *, const char *, const char *);
 struct prompt *prompt_create(struct client *,
 	     const struct prompt_create_data *);
 void	 prompt_free(struct prompt *);
-void	 prompt_start(struct prompt *, struct client *);
+void	 prompt_incremental_start(struct prompt *, struct client *);
 void	 prompt_draw(struct prompt *, struct prompt_draw_data *);
 enum prompt_key_result prompt_key(struct prompt *, struct client *, key_code,
     int *);
