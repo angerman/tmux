@@ -30,6 +30,7 @@
 #include "tmux.h"
 
 static char 	*status_message_escape(const char *);
+static void	 status_message_area(struct client *, u_int *, u_int *);
 static void	 status_message_callback(int, short, void *);
 static void	 status_timer_callback(int, short, void *);
 
@@ -405,6 +406,49 @@ status_message_clear(struct client *c)
 	status_pop_screen(c);
 }
 
+/*
+ * Calculate prompt/message area geometry from the style's width and align
+ * directives: x offset and available width within the status line.
+ */
+static void
+status_message_area(struct client *c, u_int *area_x, u_int *area_w)
+{
+	struct session		*s = c->session;
+	struct style		*sy;
+	u_int			 w;
+
+	/* Get width from message-style's width directive. */
+	sy = options_string_to_style(s->options, "message-style", NULL);
+	if (sy != NULL && sy->width >= 0) {
+		if (sy->width_percentage)
+			w = (c->tty.sx * (u_int)sy->width) / 100;
+		else
+			w = (u_int)sy->width;
+	} else
+		w = c->tty.sx;
+	if (w == 0 || w > c->tty.sx)
+		w = c->tty.sx;
+
+	/* Get horizontal position from message-style's align directive. */
+	if (sy != NULL) {
+		switch (sy->align) {
+		case STYLE_ALIGN_CENTRE:
+		case STYLE_ALIGN_ABSOLUTE_CENTRE:
+			*area_x = (c->tty.sx - w) / 2;
+			break;
+		case STYLE_ALIGN_RIGHT:
+			*area_x = c->tty.sx - w;
+			break;
+		default:
+			*area_x = 0;
+			break;
+		}
+	} else
+		*area_x = 0;
+
+	*area_w = w;
+}
+
 /* Clear status line message after timer expires. */
 static void
 status_message_callback(__unused int fd, __unused short event, void *data)
@@ -442,7 +486,7 @@ status_message_redraw(struct client *c)
 	if (messageline > lines - 1)
 		messageline = lines - 1;
 
-	prompt_area(c, &ax, &aw);
+	status_message_area(c, &ax, &aw);
 
 	ft = format_create_defaults(NULL, c, NULL, NULL, NULL);
 	memcpy(&gc, &grid_default_cell, sizeof gc);
@@ -559,10 +603,8 @@ status_prompt_redraw(struct client *c)
 {
 	struct status_line	*sl = &c->status;
 	struct screen_write_ctx	 ctx;
-	struct session		*s = c->session;
-	struct options		*oo = s->options;
 	struct screen		 old_screen;
-	u_int			 lines, n, promptline, ax, aw;
+	u_int			 lines, promptline, ax, aw;
 
 	if (c->tty.sx == 0 || c->tty.sy == 0)
 		return (0);
@@ -573,24 +615,15 @@ status_prompt_redraw(struct client *c)
 		lines = 1;
 	screen_init(sl->active, c->tty.sx, lines, 0);
 
-	n = options_get_number(s->options, "prompt-cursor-colour");
-	sl->active->default_ccolour = n;
-	if (prompt_is_command(c->prompt))
-		n = options_get_number(oo, "prompt-command-cursor-style");
-	else
-		n = options_get_number(oo, "prompt-cursor-style");
-	screen_set_cursor_style(n, &sl->active->default_cstyle,
-	    &sl->active->default_mode);
-
 	promptline = status_prompt_line_at(c);
 	if (promptline > lines - 1)
 		promptline = lines - 1;
 
-	prompt_area(c, &ax, &aw);
+	status_message_area(c, &ax, &aw);
 
 	screen_write_start(&ctx, sl->active);
 	screen_write_fast_copy(&ctx, &sl->screen, 0, 0, c->tty.sx, lines);
-	prompt_draw(c->prompt, c, &ctx, ax, promptline, aw);
+	prompt_draw(c->prompt, c, &ctx, ax, promptline, aw, &sl->prompt_cx);
 	screen_write_stop(&ctx);
 
 	if (grid_compare(sl->active->grid, old_screen.grid) == 0) {
@@ -599,6 +632,25 @@ status_prompt_redraw(struct client *c)
 	}
 	screen_free(&old_screen);
 	return (1);
+}
+
+/* Work out the tty cursor position for the prompt. */
+void
+status_prompt_cursor(struct client *c, u_int *cx, u_int *cy)
+{
+	struct tty	*tty = &c->tty;
+	u_int		 n;
+
+	if (options_get_number(c->session->options, "status-position") == 0)
+		*cy = status_prompt_line_at(c);
+	else {
+		n = status_line_size(c) - status_prompt_line_at(c);
+		if (n <= tty->sy)
+			*cy = tty->sy - n;
+		else
+			*cy = tty->sy - 1;
+	}
+	*cx = c->status.prompt_cx;
 }
 
 /* Handle keys in prompt. */

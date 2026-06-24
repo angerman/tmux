@@ -1795,7 +1795,7 @@ server_client_reset_state(struct client *c)
 	struct screen		*s = NULL;
 	struct options		*oo = c->session->options;
 	int			 mode = 0, cursor, flags, pane_mode = 0;
-	u_int			 cx = 0, cy = 0, ox, oy, sx, sy, n;
+	u_int			 cx = 0, cy = 0, ox, oy, sx, sy;
 	struct visible_ranges	*r;
 
 	if (c->flags & (CLIENT_CONTROL|CLIENT_SUSPENDED))
@@ -1826,17 +1826,7 @@ server_client_reset_state(struct client *c)
 
 	/* Move cursor to pane cursor and offset. */
 	if (c->prompt != NULL) {
-		n = options_get_number(oo, "status-position");
-		if (n == 0)
-			cy = status_prompt_line_at(c);
-		else {
-			n = status_line_size(c) - status_prompt_line_at(c);
-			if (n <= tty->sy)
-				cy = tty->sy - n;
-			else
-				cy = tty->sy - 1;
-		}
-		cx = prompt_cursor(c->prompt);
+		status_prompt_cursor(c, &cx, &cy);
 	} else if (wp != NULL && c->overlay_draw == NULL) {
 		cursor = 0;
 		pane_mode = wp->base.mode;

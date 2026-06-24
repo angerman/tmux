@@ -1977,6 +1977,8 @@ struct status_line {
 	struct screen		*active;
 	int			 references;
 
+	u_int			 prompt_cx;
+
 	struct grid_cell	 style;
 	struct style_line_entry entries[STATUS_LINES_LIMIT];
 };
@@ -3145,7 +3147,6 @@ void	 status_update_cache(struct session *);
 u_int	 status_prompt_line_at(struct client *);
 int	 status_at_line(struct client *);
 u_int	 status_line_size(struct client *);
-void	 status_prompt_area(struct client *, u_int *, u_int *);
 struct style_range *status_get_range(struct client *, u_int, u_int);
 void	 status_init(struct client *);
 void	 status_free(struct client *);
@@ -3159,6 +3160,7 @@ void	 status_prompt_set(struct client *, struct cmd_find_state *,
 	     void *, int, enum prompt_type);
 void	 status_prompt_clear(struct client *);
 int	 status_prompt_redraw(struct client *);
+void	 status_prompt_cursor(struct client *, u_int *, u_int *);
 enum prompt_key_result status_prompt_key(struct client *, key_code);
 void	 status_prompt_update(struct client *, const char *, const char *);
 
@@ -3168,15 +3170,12 @@ struct prompt *prompt_create(struct client *,
 void	 prompt_free(struct prompt *);
 void	 prompt_start(struct prompt *, struct client *);
 void	 prompt_accept(struct prompt *, struct client *, const char *);
-void	 prompt_area(struct client *, u_int *, u_int *);
 void	 prompt_draw(struct prompt *, struct client *,
-	     struct screen_write_ctx *, u_int, u_int, u_int);
+	     struct screen_write_ctx *, u_int, u_int, u_int, u_int *);
 enum prompt_key_result prompt_key(struct prompt *, struct client *, key_code);
 void	 prompt_update(struct prompt *, struct client *, const char *,
 	     const char *);
 int	 prompt_closed(struct prompt *);
-int	 prompt_is_command(struct prompt *);
-int	 prompt_cursor(struct prompt *);
 int	 prompt_is_inputcb(struct prompt *, prompt_input_cb);
 enum prompt_type prompt_type(const char *);
 const char *prompt_type_string(enum prompt_type);

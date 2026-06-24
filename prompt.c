@@ -42,7 +42,7 @@ struct prompt {
 	struct utf8_data	*saved;
 	int			 flags;
 	enum prompt_type	 type;
-	int			 cursor;
+	u_int			 menu_x;
 	int			 closed;
 };
 
@@ -308,20 +308,6 @@ prompt_closed(struct prompt *pr)
 	return (pr->closed);
 }
 
-/* Is prompt in command mode? */
-int
-prompt_is_command(struct prompt *pr)
-{
-	return (!!(pr->flags & PROMPT_COMMANDMODE));
-}
-
-/* Return prompt cursor. */
-int
-prompt_cursor(struct prompt *pr)
-{
-	return (pr->cursor);
-}
-
 /* Does this prompt have this input callback? */
 int
 prompt_is_inputcb(struct prompt *pr, prompt_input_cb inputcb)
@@ -380,72 +366,39 @@ prompt_redraw_quote(const struct prompt *pr, u_int pcursor,
 	return (1);
 }
 
-/*
- * Calculate prompt/message area geometry from the style's width and align
- * directives: x offset and available width within the status line.
- */
-void
-prompt_area(struct client *c, u_int *area_x, u_int *area_w)
-{
-	struct session		*s = c->session;
-	struct style		*sy;
-	u_int			 w;
-
-	/* Get width from message-style's width directive. */
-	sy = options_string_to_style(s->options, "message-style", NULL);
-	if (sy != NULL && sy->width >= 0) {
-		if (sy->width_percentage)
-			w = (c->tty.sx * (u_int)sy->width) / 100;
-		else
-			w = (u_int)sy->width;
-	} else
-		w = c->tty.sx;
-	if (w == 0 || w > c->tty.sx)
-		w = c->tty.sx;
-
-	/* Get horizontal position from message-style's align directive. */
-	if (sy != NULL) {
-		switch (sy->align) {
-		case STYLE_ALIGN_CENTRE:
-		case STYLE_ALIGN_ABSOLUTE_CENTRE:
-			*area_x = (c->tty.sx - w) / 2;
-			break;
-		case STYLE_ALIGN_RIGHT:
-			*area_x = c->tty.sx - w;
-			break;
-		default:
-			*area_x = 0;
-			break;
-		}
-	} else
-		*area_x = 0;
-
-	*area_w = w;
-}
-
 /* Draw prompt. */
 void
 prompt_draw(struct prompt *pr, struct client *c, struct screen_write_ctx *ctx,
-    u_int ax, u_int py, u_int aw)
+    u_int ax, u_int py, u_int aw, u_int *cx)
 {
 	struct options 		*oo = c->session->options;
+	struct screen		*s = ctx->s;
 	struct format_tree	*ft;
 	struct grid_cell	 gc;
-	u_int			 i, offset, left, start, width;
+	u_int			 i, offset, left, start, width, n;
 	u_int			 pcursor, pwidth;
 	const char		*msgfmt;
 	char			*expanded, *prompt, *tmp;
 
+	pr->menu_x = ax;
+
+	/* Choose the cursor colour and style for this prompt. */
+	n = options_get_number(oo, "prompt-cursor-colour");
+	s->default_ccolour = n;
+	if (pr->flags & PROMPT_COMMANDMODE) {
+		n = options_get_number(oo, "prompt-command-cursor-style");
+		style_apply(&gc, oo, "message-command-style", NULL);
+	} else {
+		n = options_get_number(oo, "prompt-cursor-style");
+		style_apply(&gc, oo, "message-style", NULL);
+	}
+	screen_set_cursor_style(n, &s->default_cstyle, &s->default_mode);
+
+	/* Expand the prompt itself. */
 	if (cmd_find_valid_state(&pr->state))
  		ft = format_create_from_state(NULL, c, &pr->state);
 	else
  		ft = format_create_defaults(NULL, c, NULL, NULL, NULL);
-
-	if (pr->flags & PROMPT_COMMANDMODE)
-		style_apply(&gc, oo, "message-command-style", NULL);
-	else
-		style_apply(&gc, oo, "message-style", NULL);
-
 	tmp = utf8_tocstr(pr->buffer);
 	format_add(ft, "prompt_input", "%s", tmp);
 	prompt = format_expand_time(ft, pr->string);
@@ -456,7 +409,10 @@ prompt_draw(struct prompt *pr, struct client *c, struct screen_write_ctx *ctx,
 	 * format_draw handles fill, alignment, and decorations in one call.
 	 */
 	format_add(ft, "message", "%s", prompt);
-	format_add(ft, "command_prompt", "%d", prompt_is_command(pr));
+	if (pr->flags & PROMPT_COMMANDMODE)
+		format_add(ft, "command_prompt", "1");
+	else
+		format_add(ft, "command_prompt", "0");
 	msgfmt = options_get_string(oo, "message-format");
 	expanded = format_expand_time(ft, msgfmt);
 	free(prompt);
@@ -464,6 +420,7 @@ prompt_draw(struct prompt *pr, struct client *c, struct screen_write_ctx *ctx,
 	start = format_width(expanded);
 	if (start > aw)
 		start = aw;
+	*cx = ax + start;
 
 	screen_write_cursormove(ctx, ax, py, 0);
 	format_draw(ctx, &gc, aw, expanded, NULL, 0);
@@ -491,7 +448,7 @@ prompt_draw(struct prompt *pr, struct client *c, struct screen_write_ctx *ctx,
 		offset = 0;
 	if (pwidth > left)
 		pwidth = left;
-	pr->cursor = ax + start + pcursor - offset;
+	*cx = ax + start + pcursor - offset;
 
 	width = 0;
 	for (i = 0; pr->buffer[i].size != 0; i++) {
@@ -1516,7 +1473,6 @@ prompt_complete_list_menu(struct prompt *pr, struct client *c, char **list,
 	struct menu_item	 item;
 	struct prompt_menu	*spm;
 	u_int			 lines = status_line_size(c), height, i, py;
-	u_int			 ax, aw;
 
 	if (size <= 1)
 		return (0);
@@ -1544,13 +1500,12 @@ prompt_complete_list_menu(struct prompt *pr, struct client *c, char **list,
 		menu_add_item(menu, &item, NULL, c, NULL);
 	}
 
-	prompt_area(c, &ax, &aw);
 	if (options_get_number(c->session->options, "status-position") == 0)
 		py = lines;
 	else
 		py = c->tty.sy - 3 - height;
 	offset += utf8_cstrwidth(pr->string);
-	offset += ax;
+	offset += pr->menu_x;
 	if (offset > 2)
 		offset -= 2;
 	else
