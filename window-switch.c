@@ -91,6 +91,9 @@ struct window_switch_modedata {
 
 	struct window_switch_itemdata	**matches;
 	u_int				  matches_size;
+
+	u_int				  current;
+	u_int				  offset;
 };
 
 static void
@@ -225,6 +228,37 @@ window_switch_build(struct window_switch_modedata *data)
 	data->matches_size = n;
 }
 
+static u_int
+window_switch_visible(struct window_switch_modedata *data)
+{
+	u_int	sy = screen_size_y(&data->screen);
+
+	if (sy <= 1)
+		return (0);
+	return (sy - 1);
+}
+
+static void
+window_switch_set_current(struct window_switch_modedata *data, u_int current)
+{
+	u_int	visible = window_switch_visible(data);
+
+	if (data->matches_size == 0) {
+		data->current = 0;
+		data->offset = 0;
+		return;
+	}
+
+	if (current > data->matches_size - 1)
+		current = data->matches_size - 1;
+	data->current = current;
+
+	if (data->current < data->offset)
+		data->offset = data->current;
+	else if (visible != 0 && data->current >= data->offset + visible)
+		data->offset = data->current - visible + 1;
+}
+
 static void
 window_switch_draw_screen(struct window_mode_entry *wme)
 {
@@ -234,13 +268,13 @@ window_switch_draw_screen(struct window_mode_entry *wme)
 	struct screen_write_ctx		 ctx;
 	struct screen			*s = &data->screen;
 	u_int				 sx = screen_size_x(s), i, j, width;
-	u_int				 sy = screen_size_y(s);
+	u_int				 sy = screen_size_y(s), visible, idx;
 	struct window_switch_itemdata	*item;
 	struct format_tree		*ft;
 	const char			*format;
 	char				*expanded;
-	struct grid_cell		 mgc, gc;
-
+	struct grid_cell		 mgc, sgc, gc;
+	const struct grid_cell		*dgc = &grid_default_cell;
 	screen_write_start(&ctx, s);
 	screen_write_clearscreen(&ctx, 8);
 
@@ -250,14 +284,22 @@ window_switch_draw_screen(struct window_mode_entry *wme)
 	}
 
 	style_apply(&mgc, oo, "switch-mode-match-style", NULL);
+	style_apply(&sgc, oo, "mode-style", NULL);
 
-	for (i = 0; i < data->matches_size; i++) {
-		if (i == sy - 1)
+	visible = window_switch_visible(data);
+	for (i = 0; i < visible; i++) {
+		idx = data->offset + i;
+		if (idx >= data->matches_size)
 			break;
-		item = data->matches[i];
+		item = data->matches[idx];
 
 		screen_write_cursormove(&ctx, 0, i, 0);
-		format_draw(&ctx, &grid_default_cell, sx, item->text, NULL, 0);
+		if (idx != data->current)
+			format_draw(&ctx, dgc, sx, item->text, NULL, 0);
+		else {
+			screen_write_clearendofline(&ctx, sgc.bg);
+			format_draw(&ctx, &sgc, sx, item->text, NULL, 0);
+		}
 
 		if (item->match == NULL)
 			continue;
@@ -366,6 +408,7 @@ window_switch_resize(struct window_mode_entry *wme, u_int sx, u_int sy)
 
 	screen_resize(s, sx, sy, 0);
 	window_switch_build(data);
+	window_switch_set_current(data, data->current);
 	window_switch_draw_screen(wme);
 }
 
@@ -383,7 +426,7 @@ window_switch_run_command(struct window_switch_modedata *data, struct client *c)
 
 	if (data->matches_size == 0)
 		return;
-	item = data->matches[0];
+	item = data->matches[data->current];
 
 	cmd_find_clear_state(&fs, 0);
 	switch (item->type) {
@@ -434,7 +477,7 @@ window_switch_key(struct window_mode_entry *wme, struct client *c,
 	struct window_switch_modedata	*data = wme->data;
 	struct utf8_data		 ud, *udp;
 	char				*f;
-	u_int				 i;
+	u_int				 i, visible;
 
 	switch (key) {
 	case '\r':
@@ -446,6 +489,44 @@ window_switch_key(struct window_mode_entry *wme, struct client *c,
 	case 'g'|KEYC_CTRL:
 		window_pane_reset_mode(wp);
 		return;
+	case KEYC_UP:
+	case 'p'|KEYC_CTRL:
+	case 'k'|KEYC_CTRL:
+		if (data->matches_size == 0)
+			goto moved;
+		if (data->current == 0)
+			window_switch_set_current(data, data->matches_size - 1);
+		else
+			window_switch_set_current(data, data->current - 1);
+		goto moved;
+	case KEYC_DOWN:
+	case 'n'|KEYC_CTRL:
+	case 'j'|KEYC_CTRL:
+		if (data->matches_size == 0)
+			goto moved;
+		if (data->current == data->matches_size - 1)
+			window_switch_set_current(data, 0);
+		else
+			window_switch_set_current(data, data->current + 1);
+		goto moved;
+	case KEYC_PPAGE:
+		visible = window_switch_visible(data);
+		if (data->current >= visible)
+			window_switch_set_current(data, data->current - visible);
+		else
+			window_switch_set_current(data, 0);
+		goto moved;
+	case KEYC_NPAGE:
+		visible = window_switch_visible(data);
+		window_switch_set_current(data, data->current + visible);
+		goto moved;
+	case KEYC_HOME:
+		window_switch_set_current(data, 0);
+		goto moved;
+	case KEYC_END:
+		if (data->matches_size > 0)
+			window_switch_set_current(data, data->matches_size - 1);
+		goto moved;
 	case KEYC_BSPACE:
 		udp = utf8_fromcstr(data->filter);
 		for (i = 0; udp[i].size != 0; i++)
@@ -476,6 +557,13 @@ window_switch_key(struct window_mode_entry *wme, struct client *c,
 	}
 
 	window_switch_build(data);
+	data->current = 0;
+	data->offset = 0;
+	window_switch_draw_screen(wme);
+	wp->flags |= PANE_REDRAW;
+	return;
+
+moved:
 	window_switch_draw_screen(wme);
 	wp->flags |= PANE_REDRAW;
 }
