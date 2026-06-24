@@ -18,6 +18,7 @@
 
 #include <sys/types.h>
 
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -369,19 +370,20 @@ window_switch_resize(struct window_mode_entry *wme, u_int sx, u_int sy)
 }
 
 static void
-window_switch_select_current(struct window_switch_modedata *data,
-    struct client *c)
+window_switch_run_command(struct window_switch_modedata *data, struct client *c)
 {
-#if 0
 	struct window_switch_itemdata	*item;
 	struct cmd_find_state		 fs;
 	struct session			*s;
 	struct winlink			*wl;
 	char				*target = NULL;
+	struct cmdq_state		*state;
+	char				*command, *error;
+	enum cmd_parse_status		 status;
 
-	item = mode_tree_get_current(mtd);
-	if (item == NULL)
+	if (data->matches_size == 0)
 		return;
+	item = data->matches[0];
 
 	cmd_find_clear_state(&fs, 0);
 	switch (item->type) {
@@ -403,15 +405,28 @@ window_switch_select_current(struct window_switch_modedata *data,
 		}
 		break;
 	}
-	if (target != NULL) {
-		mode_tree_run_command(c, &fs, data->command, target);
-		free(target);
+	if (target == NULL)
+		return;
+
+	command = cmd_template_replace(data->command, target, 1);
+	if (command != NULL && *command != '\0') {
+		state = cmdq_new_state(&fs, NULL, 0);
+		status = cmd_parse_and_append(command, NULL, c, state, &error);
+		if (status == CMD_PARSE_ERROR) {
+			if (c != NULL) {
+				*error = toupper((u_char)*error);
+				status_message_set(c, -1, 1, 0, 0, "%s", error);
+			}
+			free(error);
+		}
+		cmdq_free_state(state);
 	}
-#endif
+	free(command);
+	free(target);
 }
 
 static void
-window_switch_key(struct window_mode_entry *wme, __unused struct client *c,
+window_switch_key(struct window_mode_entry *wme, struct client *c,
     __unused struct session *s, __unused struct winlink *wl, key_code key,
     __unused struct mouse_event *m)
 {
@@ -423,7 +438,7 @@ window_switch_key(struct window_mode_entry *wme, __unused struct client *c,
 
 	switch (key) {
 	case '\r':
-		//window_switch_select_current(data, c);
+		window_switch_run_command(data, c);
 		/* FALLTHROUGH */
 	case '\033': /* Escape */
 	case '['|KEYC_CTRL:
