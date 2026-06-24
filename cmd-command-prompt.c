@@ -90,7 +90,7 @@ cmd_command_prompt_exec(struct cmd *self, struct cmdq_item *item)
 	u_int				 count = args_count(args);
 	int				 wait = !args_has(args, 'b'), space = 1;
 
-	if (tc->prompt_string != NULL)
+	if (tc->prompt != NULL)
 		return (CMD_RETURN_NORMAL);
 	if (args_has(args, 'i'))
 		wait = 0;
@@ -146,7 +146,7 @@ cmd_command_prompt_exec(struct cmd *self, struct cmdq_item *item)
 	}
 
 	if ((type = args_get(args, 'T')) != NULL) {
-		cdata->prompt_type = status_prompt_type(type);
+		cdata->prompt_type = prompt_type(type);
 		if (cdata->prompt_type == PROMPT_TYPE_INVALID) {
 			cmdq_error(item, "unknown type: %s", type);
 			cmd_command_prompt_free(cdata);
@@ -225,7 +225,7 @@ cmd_command_prompt_callback(struct client *c, void *data, const char *s,
 	}
 	cmd_free_argv(argc, argv);
 
-	if (c->prompt_inputcb != cmd_command_prompt_callback)
+	if (!prompt_is_inputcb(c->prompt, cmd_command_prompt_callback))
 		return (PROMPT_CONTINUE);
 
 out:

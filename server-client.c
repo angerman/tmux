@@ -485,10 +485,7 @@ server_client_lost(struct client *c)
 	free(c->message_string);
 	if (event_initialized(&c->message_timer))
 		evtimer_del(&c->message_timer);
-
-	free(c->prompt_saved);
-	free(c->prompt_string);
-	free(c->prompt_buffer);
+	prompt_free(c->prompt);
 
 	format_lost_client(c);
 	environ_free(c->environ);
@@ -1499,7 +1496,7 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 			}
 		}
 		server_client_clear_overlay(c);
-		if (c->prompt_string != NULL) {
+		if (c->prompt != NULL) {
 			switch (status_prompt_key(c, event->key)) {
 			case PROMPT_KEY_HANDLED:
 			case PROMPT_KEY_CLOSE:
@@ -1812,7 +1809,7 @@ server_client_reset_state(struct client *c)
 	if (c->overlay_draw != NULL) {
 		if (c->overlay_mode != NULL)
 			s = c->overlay_mode(c, c->overlay_data, &cx, &cy);
-	} else if (wp != NULL && c->prompt_string == NULL)
+	} else if (wp != NULL && c->prompt == NULL)
 		s = wp->screen;
 	else
 		s = c->status.active;
@@ -1828,7 +1825,7 @@ server_client_reset_state(struct client *c)
 	tty_margin_off(tty);
 
 	/* Move cursor to pane cursor and offset. */
-	if (c->prompt_string != NULL) {
+	if (c->prompt != NULL) {
 		n = options_get_number(oo, "status-position");
 		if (n == 0)
 			cy = status_prompt_line_at(c);
@@ -1839,7 +1836,7 @@ server_client_reset_state(struct client *c)
 			else
 				cy = tty->sy - 1;
 		}
-		cx = c->prompt_cursor;
+		cx = prompt_cursor(c->prompt);
 	} else if (wp != NULL && c->overlay_draw == NULL) {
 		cursor = 0;
 		pane_mode = wp->base.mode;
@@ -1891,7 +1888,7 @@ server_client_reset_state(struct client *c)
 	}
 
 	/* Clear bracketed paste mode if at the prompt. */
-	if (c->overlay_draw == NULL && c->prompt_string != NULL)
+	if (c->overlay_draw == NULL && c->prompt != NULL)
 		mode &= ~MODE_BRACKETPASTE;
 
 	/* Set the terminal mode and reset attributes. */

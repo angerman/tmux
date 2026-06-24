@@ -2031,7 +2031,7 @@ RB_HEAD(client_windows, client_window);
 /* Maximum time to be pasting. */
 #define CLIENT_PASTE_TIME_LIMIT 5
 
-/* Prompt result. */
+/* Client connection. */
 enum prompt_result {
 	PROMPT_CONTINUE,
 	PROMPT_CLOSE
@@ -2045,12 +2045,32 @@ enum prompt_key_result {
 	PROMPT_KEY_MOVE
 };
 
-/* Prompt callbacks. */
 typedef enum prompt_result (*prompt_input_cb)(struct client *, void *,
     const char *, enum prompt_key_result);
 typedef void (*prompt_free_cb)(void *);
 
-/* Overlay callbacks. */
+#define PROMPT_SINGLE 0x1
+#define PROMPT_NUMERIC 0x2
+#define PROMPT_INCREMENTAL 0x4
+#define PROMPT_NOFORMAT 0x8
+#define PROMPT_KEY 0x10
+#define PROMPT_ACCEPT 0x20
+#define PROMPT_QUOTENEXT 0x40
+#define PROMPT_BSPACE_EXIT 0x80
+#define PROMPT_NOFREEZE 0x100
+#define PROMPT_COMMANDMODE 0x200
+
+struct prompt;
+struct prompt_create_data {
+	struct cmd_find_state	*fs;
+	const char		*prompt;
+	const char		*input;
+	enum prompt_type	 type;
+	int			 flags;
+	prompt_input_cb		 inputcb;
+	prompt_free_cb		 freecb;
+	void			*data;
+};
 typedef struct visible_ranges *(*overlay_check_cb)(struct client *, void *,
     u_int, u_int, u_int);
 typedef struct screen *(*overlay_mode_cb)(struct client *, void *, u_int *,
@@ -2059,8 +2079,6 @@ typedef void (*overlay_draw_cb)(struct client *, void *);
 typedef int (*overlay_key_cb)(struct client *, void *, struct key_event *);
 typedef void (*overlay_free_cb)(struct client *, void *);
 typedef void (*overlay_resize_cb)(struct client *, void *);
-
-/* Client connection. */
 struct client {
 	const char		*name;
 	struct tmuxpeer		*peer;
@@ -2195,29 +2213,7 @@ struct client {
 	char			*message_string;
 	struct event		 message_timer;
 
-	char			*prompt_string;
-	struct utf8_data	*prompt_buffer;
-	struct cmd_find_state	 prompt_state;
-	char			*prompt_last;
-	size_t			 prompt_index;
-	prompt_input_cb		 prompt_inputcb;
-	prompt_free_cb		 prompt_freecb;
-	void			*prompt_data;
-	u_int			 prompt_hindex[PROMPT_NTYPES];
-	struct utf8_data	*prompt_saved;
-#define PROMPT_SINGLE 0x1
-#define PROMPT_NUMERIC 0x2
-#define PROMPT_INCREMENTAL 0x4
-#define PROMPT_NOFORMAT 0x8
-#define PROMPT_KEY 0x10
-#define PROMPT_ACCEPT 0x20
-#define PROMPT_QUOTENEXT 0x40
-#define PROMPT_BSPACE_EXIT 0x80
-#define PROMPT_NOFREEZE 0x100
-#define PROMPT_COMMANDMODE 0x200
-	int			 prompt_flags;
-	enum prompt_type	 prompt_type;
-	int			 prompt_cursor;
+	struct prompt		*prompt;
 
 	struct session		*session;
 	struct session		*last_session;
@@ -3145,14 +3141,13 @@ void	 server_check_unattached(void);
 void	 server_unzoom_window(struct window *);
 
 /* status.c */
-extern char	**status_prompt_hlist[];
-extern u_int	  status_prompt_hsize[];
 void	 status_timer_start(struct client *);
 void	 status_timer_start_all(void);
 void	 status_update_cache(struct session *);
 u_int	 status_prompt_line_at(struct client *);
 int	 status_at_line(struct client *);
 u_int	 status_line_size(struct client *);
+void	 status_prompt_area(struct client *, u_int *, u_int *);
 struct style_range *status_get_range(struct client *, u_int, u_int);
 void	 status_init(struct client *);
 void	 status_free(struct client *);
@@ -3168,10 +3163,32 @@ void	 status_prompt_clear(struct client *);
 int	 status_prompt_redraw(struct client *);
 enum prompt_key_result status_prompt_key(struct client *, key_code);
 void	 status_prompt_update(struct client *, const char *, const char *);
-void	 status_prompt_load_history(void);
-void	 status_prompt_save_history(void);
-const char *status_prompt_type_string(u_int);
-enum prompt_type status_prompt_type(const char *type);
+
+/* prompt.c */
+extern char	**prompt_hlist[];
+extern u_int	  prompt_hsize[];
+struct prompt *prompt_create(struct client *,
+	     const struct prompt_create_data *);
+void	 prompt_free(struct prompt *);
+void	 prompt_start(struct prompt *, struct client *);
+void	 prompt_accept(struct prompt *, struct client *, const char *);
+void	 prompt_update(struct prompt *, struct client *, const char *,
+	     const char *);
+void	 prompt_area(struct client *, u_int *, u_int *);
+void	 prompt_draw(struct prompt *, struct client *,
+	     struct screen_write_ctx *, u_int, u_int, u_int, struct options *);
+enum prompt_key_result prompt_key(struct prompt *, struct client *, key_code);
+void	 prompt_update(struct prompt *, struct client *, const char *,
+	     const char *);
+char 	*prompt_escape(const char *);
+int	 prompt_closed(struct prompt *);
+int	 prompt_is_command(struct prompt *);
+int	 prompt_cursor(struct prompt *);
+int	 prompt_is_inputcb(struct prompt *, prompt_input_cb);
+enum prompt_type prompt_type(const char *);
+const char *prompt_type_string(enum prompt_type);
+void	 prompt_load_history(void);
+void	 prompt_save_history(void);
 
 /* resize.c */
 void	 resize_window(struct window *, u_int, u_int, int, int);

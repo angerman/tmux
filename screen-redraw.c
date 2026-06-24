@@ -1526,7 +1526,7 @@ redraw_draw(struct client *c, struct window_pane *wp, int flags)
 	if (flags & REDRAW_STATUS) {
 		if (c->message_string != NULL)
 			redraw = status_message_redraw(c);
-		else if (c->prompt_string != NULL)
+		else if (c->prompt != NULL)
 			redraw = status_prompt_redraw(c);
 		else
 			redraw = status_redraw(c);
@@ -1602,7 +1602,7 @@ redraw_draw(struct client *c, struct window_pane *wp, int flags)
 
 	if (flags & REDRAW_STATUS) {
 		lines = dctx.status_lines;
-		if (c->message_string != NULL || c->prompt_string != NULL)
+		if (c->message_string != NULL || c->prompt != NULL)
 			lines = (lines == 0 ? 1 : lines);
 		if (dctx.flags & REDRAW_STATUS_TOP)
 			y = 0;
