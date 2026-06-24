@@ -56,39 +56,30 @@ cmd_show_prompt_history_exec(struct cmd *self, struct cmdq_item *item)
 	const char		*typestr = args_get(args, 'T');
 	enum prompt_type	 type;
 	u_int			 t, h;
+	const char		*v;
 
 	if (cmd_get_entry(self) == &cmd_clear_prompt_history_entry) {
 		if (typestr == NULL) {
-			for (t = 0; t < PROMPT_NTYPES; t++) {
-				for (h = 0; h < prompt_hsize[t]; h++)
-					free(prompt_hlist[t][h]);
-				free(prompt_hlist[t]);
-				prompt_hlist[t] = NULL;
-				prompt_hsize[t] = 0;
-			}
+			for (t = 0; t < PROMPT_NTYPES; t++)
+				prompt_history_clear(t);
 		} else {
 			type = prompt_type(typestr);
 			if (type == PROMPT_TYPE_INVALID) {
 				cmdq_error(item, "invalid type: %s", typestr);
 				return (CMD_RETURN_ERROR);
 			}
-			for (h = 0; h < prompt_hsize[type]; h++)
-				free(prompt_hlist[type][h]);
-			free(prompt_hlist[type]);
-			prompt_hlist[type] = NULL;
-			prompt_hsize[type] = 0;
+			prompt_history_clear(type);
 		}
-
 		return (CMD_RETURN_NORMAL);
 	}
 
 	if (typestr == NULL) {
 		for (t = 0; t < PROMPT_NTYPES; t++) {
-			cmdq_print(item, "History for %s:\n",
-			    prompt_type_string(t));
-			for (h = 0; h < prompt_hsize[t]; h++) {
-				cmdq_print(item, "%d: %s", h + 1,
-				    prompt_hlist[t][h]);
+			typestr = prompt_type_string(t);
+			cmdq_print(item, "History for %s:\n", typestr);
+			for (h = 0; h < prompt_history_size(t); h++) {
+				v = prompt_history_get(t, h);
+				cmdq_print(item, "%d: %s", h + 1, v);
 			}
 			cmdq_print(item, "%s", "");
 		}
@@ -99,9 +90,9 @@ cmd_show_prompt_history_exec(struct cmd *self, struct cmdq_item *item)
 			return (CMD_RETURN_ERROR);
 		}
 		cmdq_print(item, "History for %s:\n", prompt_type_string(type));
-		for (h = 0; h < prompt_hsize[type]; h++) {
-			cmdq_print(item, "%d: %s", h + 1,
-			    prompt_hlist[type][h]);
+		for (h = 0; h < prompt_history_size(type); h++) {
+			v = prompt_history_get(type, h);
+			cmdq_print(item, "%d: %s", h + 1, v);
 		}
 		cmdq_print(item, "%s", "");
 	}

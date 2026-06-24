@@ -1981,16 +1981,6 @@ struct status_line {
 	struct style_line_entry entries[STATUS_LINES_LIMIT];
 };
 
-/* Prompt type. */
-#define PROMPT_NTYPES 4
-enum prompt_type {
-	PROMPT_TYPE_COMMAND,
-	PROMPT_TYPE_SEARCH,
-	PROMPT_TYPE_TARGET,
-	PROMPT_TYPE_WINDOW_TARGET,
-	PROMPT_TYPE_INVALID = 0xff
-};
-
 /* File in client. */
 typedef void (*client_file_cb) (struct client *, const char *, int, int,
     struct evbuffer *, void *);
@@ -2031,7 +2021,15 @@ RB_HEAD(client_windows, client_window);
 /* Maximum time to be pasting. */
 #define CLIENT_PASTE_TIME_LIMIT 5
 
-/* Client connection. */
+/* Prompt type. */
+#define PROMPT_NTYPES 4
+enum prompt_type {
+	PROMPT_TYPE_COMMAND,
+	PROMPT_TYPE_SEARCH,
+	PROMPT_TYPE_INVALID = 0xff
+};
+
+/* Prompt result. */
 enum prompt_result {
 	PROMPT_CONTINUE,
 	PROMPT_CLOSE
@@ -3165,28 +3163,26 @@ enum prompt_key_result status_prompt_key(struct client *, key_code);
 void	 status_prompt_update(struct client *, const char *, const char *);
 
 /* prompt.c */
-extern char	**prompt_hlist[];
-extern u_int	  prompt_hsize[];
 struct prompt *prompt_create(struct client *,
 	     const struct prompt_create_data *);
 void	 prompt_free(struct prompt *);
 void	 prompt_start(struct prompt *, struct client *);
 void	 prompt_accept(struct prompt *, struct client *, const char *);
-void	 prompt_update(struct prompt *, struct client *, const char *,
-	     const char *);
 void	 prompt_area(struct client *, u_int *, u_int *);
 void	 prompt_draw(struct prompt *, struct client *,
-	     struct screen_write_ctx *, u_int, u_int, u_int, struct options *);
+	     struct screen_write_ctx *, u_int, u_int, u_int);
 enum prompt_key_result prompt_key(struct prompt *, struct client *, key_code);
 void	 prompt_update(struct prompt *, struct client *, const char *,
 	     const char *);
-char 	*prompt_escape(const char *);
 int	 prompt_closed(struct prompt *);
 int	 prompt_is_command(struct prompt *);
 int	 prompt_cursor(struct prompt *);
 int	 prompt_is_inputcb(struct prompt *, prompt_input_cb);
 enum prompt_type prompt_type(const char *);
 const char *prompt_type_string(enum prompt_type);
+u_int	 prompt_history_size(enum prompt_type);
+const char *prompt_history_get(enum prompt_type, u_int);
+void	 prompt_history_clear(enum prompt_type);
 void	 prompt_load_history(void);
 void	 prompt_save_history(void);
 

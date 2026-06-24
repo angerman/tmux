@@ -29,6 +29,7 @@
 
 #include "tmux.h"
 
+static char 	*status_message_escape(const char *);
 static void	 status_message_callback(int, short, void *);
 static void	 status_timer_callback(int, short, void *);
 
@@ -312,6 +313,28 @@ status_redraw(struct client *c)
 	return (force || changed);
 }
 
+/* Escape # characters in a string so format_draw treats them as literal. */
+char *
+status_message_escape(const char *s)
+{
+	const char	*cp;
+	char		*out, *p;
+	size_t		 n = 0;
+
+	for (cp = s; *cp != '\0'; cp++) {
+		if (*cp == '#')
+			n++;
+	}
+	p = out = xmalloc(strlen(s) + n + 1);
+	for (cp = s; *cp != '\0'; cp++) {
+		if (*cp == '#')
+			*p++ = '#';
+		*p++ = *cp;
+	}
+	*p = '\0';
+	return (out);
+}
+
 /* Set a status line message. */
 void
 status_message_set(struct client *c, int delay, int ignore_styles,
@@ -430,7 +453,7 @@ status_message_redraw(struct client *c)
 	 * as literal text.
 	 */
 	if (c->message_ignore_styles) {
-		msg = prompt_escape(c->message_string);
+		msg = status_message_escape(c->message_string);
 		format_add(ft, "message", "%s", msg);
 		free(msg);
 	} else
@@ -567,7 +590,7 @@ status_prompt_redraw(struct client *c)
 
 	screen_write_start(&ctx, sl->active);
 	screen_write_fast_copy(&ctx, &sl->screen, 0, 0, c->tty.sx, lines);
-	prompt_draw(c->prompt, c, &ctx, ax, promptline, aw, oo);
+	prompt_draw(c->prompt, c, &ctx, ax, promptline, aw);
 	screen_write_stop(&ctx);
 
 	if (grid_compare(sl->active->grid, old_screen.grid) == 0) {

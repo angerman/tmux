@@ -69,8 +69,8 @@ static const char *prompt_type_strings[] = {
 };
 
 /* Status prompt history. */
-char	**prompt_hlist[PROMPT_NTYPES];
-u_int	  prompt_hsize[PROMPT_NTYPES];
+static char	**prompt_hlist[PROMPT_NTYPES];
+static u_int	  prompt_hsize[PROMPT_NTYPES];
 
 /* Find the history file to load/save from/to. */
 static char *
@@ -423,33 +423,12 @@ prompt_area(struct client *c, u_int *area_x, u_int *area_w)
 	*area_w = w;
 }
 
-/* Escape # characters in a string so format_draw treats them as literal. */
-char *
-prompt_escape(const char *s)
-{
-	const char	*cp;
-	char		*out, *p;
-	size_t		 n = 0;
-
-	for (cp = s; *cp != '\0'; cp++) {
-		if (*cp == '#')
-			n++;
-	}
-	p = out = xmalloc(strlen(s) + n + 1);
-	for (cp = s; *cp != '\0'; cp++) {
-		if (*cp == '#')
-			*p++ = '#';
-		*p++ = *cp;
-	}
-	*p = '\0';
-	return (out);
-}
-
 /* Draw prompt. */
 void
 prompt_draw(struct prompt *pr, struct client *c, struct screen_write_ctx *ctx,
-    u_int ax, u_int py, u_int aw, struct options *oo)
+    u_int ax, u_int py, u_int aw)
 {
+	struct options 		*oo = c->session->options;
 	struct format_tree	*ft;
 	struct grid_cell	 gc;
 	u_int			 i, offset, left, start, width;
@@ -1363,8 +1342,7 @@ prompt_up_history(u_int *idx, u_int type)
 	 * empty.
 	 */
 
-	if (prompt_hsize[type] == 0 ||
-	    idx[type] == prompt_hsize[type])
+	if (prompt_hsize[type] == 0 || idx[type] == prompt_hsize[type])
 		return (NULL);
 	idx[type]++;
 	return (prompt_hlist[type][prompt_hsize[type] - idx[type]]);
@@ -1650,11 +1628,43 @@ prompt_type(const char *type)
 	return (PROMPT_TYPE_INVALID);
 }
 
-/* Accessor for prompt_type_strings. */
+/* Get prompt type as a string. */
 const char *
 prompt_type_string(enum prompt_type type)
 {
 	if (type >= PROMPT_NTYPES)
 		return ("invalid");
 	return (prompt_type_strings[type]);
+}
+
+/* Get history size. */
+u_int
+prompt_history_size(enum prompt_type type)
+{
+	if (type >= PROMPT_NTYPES)
+		return (0);
+	return (prompt_hsize[type]);
+}
+
+/* Get history entry. */
+const char *
+prompt_history_get(enum prompt_type type, u_int idx)
+{
+	if (type >= PROMPT_NTYPES)
+		return (NULL);
+	return (prompt_hlist[type][idx]);
+}
+
+/* Clear prompt history. */
+void
+prompt_history_clear(enum prompt_type type)
+{
+	u_int	idx;
+
+	if (type >= PROMPT_NTYPES)
+		return;
+	for (idx = 0; idx < prompt_hsize[type]; idx++)
+		free(prompt_hlist[type][idx]);
+	prompt_hlist[type] = NULL;
+	prompt_hsize[type] = 0;
 }
