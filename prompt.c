@@ -133,7 +133,7 @@ prompt_fire_callback(struct prompt *pr, struct client *c, const char *s,
 	enum prompt_result	result;
 
 	result = pr->inputcb(c, pr->data, s, type);
-	if (c->prompt != pr) /* prompt has been replaced */
+	if ((~pr->flags & PROMPT_ISMODE) && c->prompt != pr) /* replaced */
 		return (1);
 	if (result == PROMPT_CLOSE) {
 		pr->closed = 1;
