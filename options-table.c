@@ -1484,7 +1484,7 @@ const struct options_table_entry options_table[] = {
 	  .scope = OPTIONS_TABLE_WINDOW|OPTIONS_TABLE_PANE,
 	  .default_str = "#[fill=yellow bg=yellow fg=black]"
 	                 "filter: #{filter}",
-	  .text = "Format of the preview indicator in switch mode."
+	  .text = "Format of the filter prompt in switch mode."
 	},
 
 	{ .name = "switch-mode-match-style",

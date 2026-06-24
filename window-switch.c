@@ -345,13 +345,16 @@ window_switch_init(struct window_mode_entry *wme,
 
 	wme->data = data = xcalloc(1, sizeof *data);
 	data->wp = wp;
-	data->filter = xstrdup("");
 
 	if (args_has(args, 'w'))
 		data->type = WINDOW_SWITCH_TYPE_WINDOW;
 	else
 		data->type = WINDOW_SWITCH_TYPE_SESSION;
 
+	if (args == NULL || !args_has(args, 'f'))
+		data->filter = xstrdup("");
+	else
+		data->filter = xstrdup(args_get(args, 'f'));
 	if (args == NULL || !args_has(args, 'F'))
 		data->format = xstrdup(WINDOW_SWITCH_DEFAULT_FORMAT);
 	else
@@ -412,7 +415,7 @@ window_switch_resize(struct window_mode_entry *wme, u_int sx, u_int sy)
 	window_switch_draw_screen(wme);
 }
 
-static void
+static int
 window_switch_run_command(struct window_switch_modedata *data, struct client *c)
 {
 	struct window_switch_itemdata	*item;
@@ -425,7 +428,7 @@ window_switch_run_command(struct window_switch_modedata *data, struct client *c)
 	enum cmd_parse_status		 status;
 
 	if (data->matches_size == 0)
-		return;
+		return (0);
 	item = data->matches[data->current];
 
 	cmd_find_clear_state(&fs, 0);
@@ -449,7 +452,7 @@ window_switch_run_command(struct window_switch_modedata *data, struct client *c)
 		break;
 	}
 	if (target == NULL)
-		return;
+		return (0);
 
 	command = cmd_template_replace(data->command, target, 1);
 	if (command != NULL && *command != '\0') {
@@ -466,6 +469,7 @@ window_switch_run_command(struct window_switch_modedata *data, struct client *c)
 	}
 	free(command);
 	free(target);
+	return (1);
 }
 
 static void
@@ -481,8 +485,9 @@ window_switch_key(struct window_mode_entry *wme, struct client *c,
 
 	switch (key) {
 	case '\r':
-		window_switch_run_command(data, c);
-		/* FALLTHROUGH */
+		if (window_switch_run_command(data, c))
+			window_pane_reset_mode(wp);
+		break;
 	case '\033': /* Escape */
 	case '['|KEYC_CTRL:
 	case 'c'|KEYC_CTRL:
