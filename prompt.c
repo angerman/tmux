@@ -912,7 +912,7 @@ prompt_check_move(struct prompt *pr, key_code key)
 
 /* Handle keys in prompt. */
 enum prompt_key_result
-prompt_key(struct prompt *pr, struct client *c, key_code key, int *redraw)
+prompt_key(struct prompt *pr, key_code key, int *redraw)
 {
 	char			*s, *cp, prefix = '=';
 	const char		*histstr, *ks;

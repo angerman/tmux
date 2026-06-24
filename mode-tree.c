@@ -1430,7 +1430,7 @@ mode_tree_key(struct mode_tree_data *mtd, struct client *c, key_code *key,
 		mtp = mtd->prompt_data;
 		if (mtp != NULL)
 			mtp->c = c;
-		result = prompt_key(prompt, c, *key, &redraw);
+		result = prompt_key(prompt, *key, &redraw);
 		if (mtd->prompt_data == mtp && mtp != NULL)
 			mtp->c = NULL;
 
