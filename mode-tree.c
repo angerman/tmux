@@ -81,7 +81,6 @@ struct mode_tree_data {
 	struct prompt		 *prompt;
 	struct mode_tree_prompt	 *prompt_data;
 	u_int			  prompt_cx;
-	u_int			  prompt_menu_oy;
 	int			  prompt_top;
 
 	int			  preview;
@@ -976,7 +975,6 @@ done:
 static void
 mode_tree_draw_prompt(struct mode_tree_data *mtd, struct screen_write_ctx *ctx)
 {
-	struct window_pane	*wp = mtd->wp;
 	struct screen		*s = &mtd->screen;
 	struct prompt_draw_data	 pdd;
 	u_int			 sx = screen_size_x(s), sy = screen_size_y(s);
@@ -995,10 +993,6 @@ mode_tree_draw_prompt(struct mode_tree_data *mtd, struct screen_write_ctx *ctx)
 	pdd.area_x = 0;
 	pdd.area_width = sx;
 	pdd.prompt_line = py;
-	pdd.menu_x = wp->xoff;
-	pdd.menu_y = mtd->prompt_menu_oy + py;
-	pdd.menu_height = (sy > 1) ? sy - 1 : 0;
-	pdd.menu_above = !mtd->prompt_top;
 
 	s->mode |= MODE_CURSOR;
 	prompt_draw(mtd->prompt, &pdd);
@@ -1074,9 +1068,6 @@ mode_tree_set_prompt(struct mode_tree_data *mtd, struct client *c,
 	mtp->data = data;
 
 	mtd->references++;
-	mtd->prompt_menu_oy = mtd->wp->yoff;
-	if (c != NULL && status_at_line(c) == 0)
-		mtd->prompt_menu_oy += status_line_size(c);
 	mtd->prompt_top = options_get_number(oo, "status-position") == 0;
 
 	memset(&pd, 0, sizeof pd);
@@ -1084,7 +1075,7 @@ mode_tree_set_prompt(struct mode_tree_data *mtd, struct client *c,
 	pd.prompt = prompt;
 	pd.input = input;
 	pd.type = type;
-	pd.flags = flags|PROMPT_ISMODE;
+	pd.flags = flags;
 	pd.inputcb = mode_tree_prompt_input_callback;
 	pd.freecb = mode_tree_prompt_free_callback;
 	pd.data = mtp;
