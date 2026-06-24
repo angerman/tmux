@@ -1268,6 +1268,7 @@ prompt_menu_callback(__unused struct menu *menu, u_int idx, key_code key,
 	for (i = 0; i < pm->size; i++)
 		free(pm->list[i]);
 	free(pm->list);
+	free(pm);
 }
 
 /* Show complete word menu. */
