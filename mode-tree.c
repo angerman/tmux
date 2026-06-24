@@ -147,6 +147,7 @@ static void	mode_tree_draw_help(struct mode_tree_data *,
 		    struct screen_write_ctx *);
 static void	mode_tree_draw_prompt(struct mode_tree_data *,
 		    struct screen_write_ctx *);
+static enum cmd_retval mode_tree_prompt_accept(struct cmdq_item *, void *);
 
 static const struct menu_item mode_tree_menu_items[] = {
 	{ "Scroll Left", '<', NULL },
@@ -1017,6 +1018,20 @@ mode_tree_has_prompt(struct mode_tree_data *mtd)
 	return (mtd->prompt != NULL);
 }
 
+static enum cmd_retval
+mode_tree_prompt_accept(struct cmdq_item *item, void *data)
+{
+	struct mode_tree_data	*mtd = data;
+	struct client		*c = cmdq_get_client(item);
+	key_code		 key = 'y';
+
+	if (mtd->prompt != NULL && c != NULL)
+		mode_tree_key(mtd, c, &key, NULL, NULL, NULL);
+
+	mode_tree_remove_ref(mtd);
+	return (CMD_RETURN_NORMAL);
+}
+
 static enum prompt_result
 mode_tree_prompt_input_callback(void *data, const char *s,
     enum prompt_key_result key)
@@ -1084,6 +1099,11 @@ mode_tree_set_prompt(struct mode_tree_data *mtd, struct client *c,
 
 	mode_tree_draw(mtd);
 	mtd->wp->flags |= PANE_REDRAW;
+
+	if ((flags & PROMPT_SINGLE) && (flags & PROMPT_ACCEPT) && c != NULL) {
+		mtd->references++;
+		cmdq_append(c, cmdq_get_callback(mode_tree_prompt_accept, mtd));
+	}
 }
 
 static struct mode_tree_item *
