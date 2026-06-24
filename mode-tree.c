@@ -79,6 +79,7 @@ struct mode_tree_data {
 	struct screen		  screen;
 	struct prompt		 *prompt;
 	u_int			  prompt_cx;
+	u_int			  prompt_menu_oy;
 	int			  prompt_top;
 
 	int			  preview;
@@ -992,7 +993,7 @@ mode_tree_draw_prompt(struct mode_tree_data *mtd, struct screen_write_ctx *ctx)
 	pdd.area_width = sx;
 	pdd.prompt_line = py;
 	pdd.menu_x = wp->xoff;
-	pdd.menu_y = wp->yoff + py;
+	pdd.menu_y = mtd->prompt_menu_oy + py;
 	pdd.menu_height = (sy > 1) ? sy - 1 : 0;
 	pdd.menu_above = !mtd->prompt_top;
 
@@ -1062,6 +1063,9 @@ mode_tree_set_prompt(struct mode_tree_data *mtd, struct client *c,
 	mtp->data = data;
 
 	mtd->references++;
+	mtd->prompt_menu_oy = mtd->wp->yoff;
+	if (c != NULL && status_at_line(c) == 0)
+		mtd->prompt_menu_oy += status_line_size(c);
 	mtd->prompt_top = options_get_number(oo, "status-position") == 0;
 
 	memset(&pd, 0, sizeof pd);
