@@ -180,15 +180,6 @@ prompt_closed(struct prompt *pr)
 	return (pr->closed);
 }
 
-/* Does this prompt have this input callback? */
-int
-prompt_is_inputcb(struct prompt *pr, prompt_input_cb inputcb)
-{
-	if (pr == NULL)
-		return (0);
-	return (pr->inputcb == inputcb);
-}
-
 /* Redraw character. Return 1 if can continue redrawing, 0 otherwise. */
 static int
 prompt_redraw_character(struct screen_write_ctx *ctx, u_int offset,
@@ -806,9 +797,20 @@ prompt_backward_word(struct prompt *pr, const char *separators)
 static enum prompt_key_result
 prompt_done(struct prompt *pr, struct client *c, const char *s)
 {
-	void	*pd = pr->data;
+	void			*pd = pr->data;
+	enum prompt_result	 result;
 
-	if (pr->inputcb(c, pd, s, PROMPT_KEY_CLOSE) == PROMPT_CLOSE) {
+	result = pr->inputcb(c, pd, s, PROMPT_KEY_CLOSE);
+
+	/*
+	 * The callback may have replaced the prompt with a new one - for
+	 * example by running a command which itself opens a prompt. If so, pr
+	 * has been freed and the new prompt must be left open.
+	 */
+	if (c->prompt != pr)
+		return (PROMPT_KEY_CLOSE);
+
+	if (result == PROMPT_CLOSE) {
 		pr->closed = 1;
 		return (PROMPT_KEY_CLOSE);
 	}

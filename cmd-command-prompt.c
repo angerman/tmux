@@ -225,9 +225,6 @@ cmd_command_prompt_callback(struct client *c, void *data, const char *s,
 	}
 	cmd_free_argv(argc, argv);
 
-	if (!prompt_is_inputcb(c->prompt, cmd_command_prompt_callback))
-		return (PROMPT_CONTINUE);
-
 out:
 	if (item != NULL)
 		cmdq_continue(item);

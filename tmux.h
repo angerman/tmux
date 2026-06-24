@@ -3177,7 +3177,6 @@ enum prompt_key_result prompt_key(struct prompt *, struct client *, key_code);
 void	 prompt_update(struct prompt *, struct client *, const char *,
 	     const char *);
 int	 prompt_closed(struct prompt *);
-int	 prompt_is_inputcb(struct prompt *, prompt_input_cb);
 enum prompt_type prompt_type(const char *);
 const char *prompt_type_string(enum prompt_type);
 
