@@ -55,26 +55,38 @@
 /* A single visible character of the text. */
 struct fuzzy_char {
 	enum style_align	 align;
-	wchar_t			 wc;
-	u_int			 width;
+	struct utf8_data	 ud;		/* original UTF-8 data */
+	u_int			 width;		/* display width */
 	u_int			 offset;	/* within its alignment */
 };
 
 /* Is this character a word boundary, so a match after it scores higher? */
 static int
-fuzzy_is_boundary(wchar_t wc)
+fuzzy_is_boundary(const struct utf8_data *ud)
 {
-	return (wc == ' ' || wc == '-' || wc == '_' || wc == '/' ||
-	    wc == '.' || wc == ':');
+	u_char	c;
+
+	if (ud->size != 1)
+		return (0);
+	c = ud->data[0];
+	return (c == ' ' || c == '-' || c == '_' || c == '/' ||
+	    c == '.' || c == ':');
 }
 
 /* Compare two characters, folding ASCII case if wanted. */
 static int
-fuzzy_equal(wchar_t a, wchar_t b, int fold)
+fuzzy_char_equal(const struct utf8_data *a, const struct utf8_data *b, int fold)
 {
-	if (fold && a < 0x80 && b < 0x80)
-		return (tolower((u_char)a) == tolower((u_char)b));
-	return (a == b);
+	/*
+	 * Single-byte ASCII on both sides can be compared directly, applying
+	 * smart-case folding if wanted. Anything else (multibyte UTF-8 or a raw
+	 * literal byte) is compared exactly by size and data, with no case
+	 * folding.
+	 */
+	if (fold && a->size == 1 && b->size == 1 &&
+	    a->data[0] < 0x80 && b->data[0] < 0x80)
+		return (tolower(a->data[0]) == tolower(b->data[0]));
+	return (a->size == b->size && memcmp(a->data, b->data, a->size) == 0);
 }
 
 /* Map a style alignment onto one of the four layout columns. */
@@ -89,7 +101,7 @@ fuzzy_align(enum style_align align)
 /* Add a visible character to the array, updating the alignment width. */
 static void
 fuzzy_add(struct fuzzy_char **cs, u_int *ncs, u_int *alloc, enum style_align a,
-    wchar_t wc, u_int width, u_int *widths)
+    const struct utf8_data *ud, u_int *widths)
 {
 	struct fuzzy_char	*fc;
 
@@ -99,10 +111,35 @@ fuzzy_add(struct fuzzy_char **cs, u_int *ncs, u_int *alloc, enum style_align a,
 	}
 	fc = &(*cs)[(*ncs)++];
 	fc->align = a;
-	fc->wc = wc;
-	fc->width = width;
+	memcpy(&fc->ud, ud, sizeof fc->ud);
+	fc->width = ud->width;
 	fc->offset = widths[a];
-	widths[a] += width;
+	widths[a] += ud->width;
+}
+
+/*
+ * Decode the character at cp (which must be before end) into ud and return a
+ * pointer to the byte after it. A valid multibyte sequence is consumed whole
+ * and ud holds its UTF-8 data and width. On a decode failure, or for a plain
+ * single byte, the original start byte is stored as a literal (width 1) and
+ * the pointer advances by exactly one. This is the single decode path shared
+ * by the text and pattern sides so they can never diverge.
+ */
+static const char *
+fuzzy_decode_one(const char *cp, const char *end, struct utf8_data *ud)
+{
+	enum utf8_state	 more;
+	const char	*start = cp;
+
+	if ((more = utf8_open(ud, (u_char)*cp)) == UTF8_MORE) {
+		while (++cp != end && more == UTF8_MORE)
+			more = utf8_append(ud, (u_char)*cp);
+		if (more == UTF8_DONE)
+			return (cp);	/* cp is one past the sequence */
+		cp = start;		/* decode failed, fall back to literal */
+	}
+	utf8_set(ud, (u_char)*cp);
+	return (cp + 1);
 }
 
 /*
@@ -117,15 +154,15 @@ fuzzy_scan(const char *text, u_int *ncs, u_int *widths)
 	u_int			 alloc = 0, n, leading, i;
 	enum style_align	 current = STYLE_ALIGN_LEFT;
 	struct style		 sy;
-	const char		*cp = text, *end;
-	struct utf8_data	 ud;
-	enum utf8_state		 more;
-	wchar_t			 wc;
+	const char		*cp = text, *textend = text + strlen(text), *end;
+	struct utf8_data	 ud, hash, bracket;
 	char			*tmp;
 
 	*ncs = 0;
 	memset(widths, 0, sizeof *widths * (STYLE_ALIGN_ABSOLUTE_CENTRE + 1));
 	style_set(&sy, &grid_default_cell);
+	utf8_set(&hash, '#');
+	utf8_set(&bracket, '[');
 
 	while (*cp != '\0') {
 		/* Handle a run of #s, which may introduce a style. */
@@ -137,17 +174,17 @@ fuzzy_scan(const char *text, u_int *ncs, u_int *widths)
 				leading = (n % 2 == 0) ? n / 2 : n / 2 + 1;
 				for (i = 0; i < leading; i++) {
 					fuzzy_add(&cs, ncs, &alloc, current,
-					    '#', 1, widths);
+					    &hash, widths);
 				}
 				cp += n;
 				continue;
 			}
 			/* Even count: all #s escaped, the [ is literal. */
 			for (i = 0; i < n / 2; i++)
-				fuzzy_add(&cs, ncs, &alloc, current, '#', 1,
+				fuzzy_add(&cs, ncs, &alloc, current, &hash,
 				    widths);
 			if (n % 2 == 0) {
-				fuzzy_add(&cs, ncs, &alloc, current, '[', 1,
+				fuzzy_add(&cs, ncs, &alloc, current, &bracket,
 				    widths);
 				cp += n + 1;
 				continue;
@@ -165,24 +202,17 @@ fuzzy_scan(const char *text, u_int *ncs, u_int *widths)
 			continue;
 		}
 
-		/* See if this is a UTF-8 character. */
-		if ((more = utf8_open(&ud, *cp)) == UTF8_MORE) {
-			while (*++cp != '\0' && more == UTF8_MORE)
-				more = utf8_append(&ud, *cp);
-			if (more == UTF8_DONE) {
-				if (utf8_towc(&ud, &wc) == UTF8_DONE) {
-					fuzzy_add(&cs, ncs, &alloc, current, wc,
-					    ud.width, widths);
-				}
-				continue;
-			}
-			cp -= ud.have;
-		}
+		/* Decode one character, multibyte or single byte. */
+		cp = fuzzy_decode_one(cp, textend, &ud);
 
-		/* Not UTF-8: an ASCII character or something to ignore. */
-		if (*cp > 0x1f && *cp < 0x7f)
-			fuzzy_add(&cs, ncs, &alloc, current, *cp, 1, widths);
-		cp++;
+		/*
+		 * Skip non-printable single bytes (control characters and raw
+		 * bytes left over from a failed decode); keep printable ASCII
+		 * and any decoded UTF-8.
+		 */
+		if (ud.size == 1 && (ud.data[0] <= 0x1f || ud.data[0] >= 0x7f))
+			continue;
+		fuzzy_add(&cs, ncs, &alloc, current, &ud, widths);
 	}
 	return (cs);
 }
@@ -210,14 +240,15 @@ fuzzy_column(const struct fuzzy_char *fc, const u_int *start, const u_int *src,
  * token matches and 0 if not.
  */
 static int
-fuzzy_match_token(const wchar_t *token, u_int tokenlen, struct fuzzy_char *cs,
-    u_int ncs, int fold, int *score, char *matched)
+fuzzy_match_token(const struct utf8_data *token, u_int tokenlen,
+    struct fuzzy_char *cs, u_int ncs, int fold, int *score, char *matched)
 {
 	u_int	pi = 0, ci = 0, last = 0;
 	int	started = 0;
 
 	while (pi != tokenlen) {
-		while (ci != ncs && !fuzzy_equal(token[pi], cs[ci].wc, fold))
+		while (ci != ncs &&
+		    !fuzzy_char_equal(&token[pi], &cs[ci].ud, fold))
 			ci++;
 		if (ci == ncs)
 			return (0);
@@ -226,7 +257,7 @@ fuzzy_match_token(const wchar_t *token, u_int tokenlen, struct fuzzy_char *cs,
 			if (ci == 0)
 				*score += FUZZY_BONUS_START;
 			else {
-				if (fuzzy_is_boundary(cs[ci - 1].wc))
+				if (fuzzy_is_boundary(&cs[ci - 1].ud))
 					*score += FUZZY_BONUS_BOUNDARY;
 				if (ci < FUZZY_PENALTY_LEADING_MAX)
 					*score -= ci * FUZZY_PENALTY_LEADING;
@@ -239,7 +270,7 @@ fuzzy_match_token(const wchar_t *token, u_int tokenlen, struct fuzzy_char *cs,
 		} else {
 			if (ci == last + 1)
 				*score += FUZZY_BONUS_CONSECUTIVE;
-			else if (fuzzy_is_boundary(cs[ci - 1].wc))
+			else if (fuzzy_is_boundary(&cs[ci - 1].ud))
 				*score += FUZZY_BONUS_BOUNDARY;
 		}
 		last = ci;
@@ -251,30 +282,18 @@ fuzzy_match_token(const wchar_t *token, u_int tokenlen, struct fuzzy_char *cs,
 	return (1);
 }
 
-/* Decode a UTF-8 token into wide characters. Returns the count. */
+/*
+ * Decode a UTF-8 pattern token into an array of characters, using the same
+ * decode path as the text side. Returns the count.
+ */
 static u_int
-fuzzy_decode(const char *token, size_t len, wchar_t *out)
+fuzzy_decode(const char *token, size_t len, struct utf8_data *out)
 {
-	struct utf8_data	 ud;
-	enum utf8_state		 more;
-	const char		*cp = token, *end = token + len;
-	u_int			 n = 0;
-	wchar_t			 wc;
+	const char	*cp = token, *end = token + len;
+	u_int		 n = 0;
 
-	while (cp != end) {
-		if ((more = utf8_open(&ud, *cp)) == UTF8_MORE) {
-			while (++cp != end && more == UTF8_MORE)
-				more = utf8_append(&ud, *cp);
-			if (more == UTF8_DONE) {
-				if (utf8_towc(&ud, &wc) == UTF8_DONE)
-					out[n++] = wc;
-				continue;
-			}
-			cp -= ud.have;
-		}
-		out[n++] = (u_char)*cp;
-		cp++;
-	}
+	while (cp != end)
+		cp = fuzzy_decode_one(cp, end, &out[n++]);
 	return (n);
 }
 
@@ -289,7 +308,7 @@ fuzzy_match(const char *pattern, const char *text, u_int width, u_int *score)
 {
 	struct fuzzy_char	*cs;
 	char			*matched = NULL;
-	wchar_t			*token;
+	struct utf8_data	*token;
 	bitstr_t		*mask;
 	u_int			 ncs, i, j, column;
 	u_int			 widths[STYLE_ALIGN_ABSOLUTE_CENTRE + 1];
