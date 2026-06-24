@@ -672,8 +672,11 @@ enum prompt_key_result
 status_prompt_key(struct client *c, key_code key)
 {
 	enum prompt_key_result	result;
+	int			redraw = 0;
 
-	result = prompt_key(c->prompt, c, key);
+	result = prompt_key(c->prompt, c, key, &redraw);
+	if (redraw && c->prompt != NULL)
+		c->flags |= CLIENT_REDRAWSTATUS;
 	if (c->prompt != NULL && prompt_closed(c->prompt))
 		status_prompt_clear(c);
 	return (result);

@@ -3173,7 +3173,8 @@ void	 prompt_accept(struct prompt *, struct client *, const char *);
 void	 prompt_draw(struct prompt *, struct client *,
 	     struct screen_write_ctx *, u_int, u_int, u_int, u_int *);
 void	 prompt_set_menu(struct prompt *, u_int, u_int, int);
-enum prompt_key_result prompt_key(struct prompt *, struct client *, key_code);
+enum prompt_key_result prompt_key(struct prompt *, struct client *, key_code,
+    int *);
 void	 prompt_update(struct prompt *, struct client *, const char *,
 	     const char *);
 int	 prompt_closed(struct prompt *);

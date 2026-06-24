@@ -401,11 +401,13 @@ prompt_keypad_key(key_code key)
 
 /*
  * Translate key from vi to emacs. Return 0 to drop key, 1 to process the key
- * as an emacs key; return 2 to append to the buffer.
+ * as an emacs key; return 2 to append to the buffer. Set *redraw if the
+ * translation changed something the host needs to redraw (such as switching
+ * between insert and command mode).
  */
 static int
-prompt_translate_key(struct prompt *pr, struct client *c, key_code key,
-    key_code *new_key)
+prompt_translate_key(struct prompt *pr, key_code key, key_code *new_key,
+    int *redraw)
 {
 	if (~pr->flags & PROMPT_COMMANDMODE) {
 		switch (key) {
@@ -442,7 +444,7 @@ prompt_translate_key(struct prompt *pr, struct client *c, key_code key,
 			pr->flags |= PROMPT_COMMANDMODE;
 			if (pr->index != 0)
 				pr->index--;
-			c->flags |= CLIENT_REDRAWSTATUS;
+			*redraw = 1;
 			return (0);
 		}
 		*new_key = key;
@@ -459,16 +461,16 @@ prompt_translate_key(struct prompt *pr, struct client *c, key_code key,
 	case 's':
 	case 'a':
 		pr->flags &= ~PROMPT_COMMANDMODE;
-		c->flags |= CLIENT_REDRAWSTATUS;
+		*redraw = 1;
 		break; /* switch mode and... */
 	case 'S':
 		pr->flags &= ~PROMPT_COMMANDMODE;
-		c->flags |= CLIENT_REDRAWSTATUS;
+		*redraw = 1;
 		*new_key = 'u'|KEYC_CTRL;
 		return (1);
 	case 'i':
 		pr->flags &= ~PROMPT_COMMANDMODE;
-		c->flags |= CLIENT_REDRAWSTATUS;
+		*redraw = 1;
 		return (0);
 	case '\033': /* Escape */
 	case '['|KEYC_CTRL:
@@ -795,7 +797,7 @@ prompt_backward_word(struct prompt *pr, const char *separators)
 
 /* Fire input callback when done. */
 static enum prompt_key_result
-prompt_done(struct prompt *pr, struct client *c, const char *s)
+prompt_done(struct prompt *pr, struct client *c, const char *s, int *redraw)
 {
 	void			*pd = pr->data;
 	enum prompt_result	 result;
@@ -814,7 +816,7 @@ prompt_done(struct prompt *pr, struct client *c, const char *s)
 		pr->closed = 1;
 		return (PROMPT_KEY_CLOSE);
 	}
-	c->flags |= CLIENT_REDRAWSTATUS;
+	*redraw = 1;
 	return (PROMPT_KEY_HANDLED);
 }
 
@@ -850,7 +852,7 @@ prompt_check_move(struct prompt *pr, struct client *c, key_code key)
 
 /* Handle keys in prompt. */
 enum prompt_key_result
-prompt_key(struct prompt *pr, struct client *c, key_code key)
+prompt_key(struct prompt *pr, struct client *c, key_code key, int *redraw)
 {
 	void			*pd = pr->data;
 	struct options		*oo = c->session->options;
@@ -898,7 +900,7 @@ prompt_key(struct prompt *pr, struct client *c, key_code key)
 
 	keys = options_get_number(c->session->options, "status-keys");
 	if (keys == MODEKEY_VI) {
-		switch (prompt_translate_key(pr, c, key, &key)) {
+		switch (prompt_translate_key(pr, key, &key, redraw)) {
 		case 1:
 			goto process_key;
 		case 2:
@@ -948,7 +950,7 @@ process_key:
 	case KEYC_BSPACE:
 	case 'h'|KEYC_CTRL:
 		if (pr->flags & PROMPT_BSPACE_EXIT && size == 0)
-			return (prompt_done(pr, c, NULL));
+			return (prompt_done(pr, c, NULL, redraw));
 		if (pr->index != 0) {
 			if (pr->index == size)
 				pr->buffer[--pr->index].size = 0;
@@ -1087,14 +1089,14 @@ process_key:
 		s = utf8_tocstr(pr->buffer);
 		if (*s != '\0')
 			prompt_add_history(s, pr->type);
-		result = prompt_done(pr, c, s);
+		result = prompt_done(pr, c, s, redraw);
 		free(s);
 		return (result);
 	case '\033': /* Escape */
 	case '['|KEYC_CTRL:
 	case 'c'|KEYC_CTRL:
 	case 'g'|KEYC_CTRL:
-		return (prompt_done(pr, c, NULL));
+		return (prompt_done(pr, c, NULL, redraw));
 	case 'r'|KEYC_CTRL:
 		if (~pr->flags & PROMPT_INCREMENTAL)
 			break;
@@ -1124,7 +1126,7 @@ process_key:
 		goto append_key;
 	}
 
-	c->flags |= CLIENT_REDRAWSTATUS;
+	*redraw = 1;
 	return (PROMPT_KEY_HANDLED);
 
 append_key:
@@ -1159,13 +1161,13 @@ append_key:
 			result = PROMPT_KEY_CLOSE;
 		} else {
 			s = utf8_tocstr(pr->buffer);
-			result = prompt_done(pr, c, s);
+			result = prompt_done(pr, c, s, redraw);
 			free(s);
 		}
 	}
 
 changed:
-	c->flags |= CLIENT_REDRAWSTATUS;
+	*redraw = 1;
 	if (pr->flags & PROMPT_INCREMENTAL) {
 		s = utf8_tocstr(pr->buffer);
 		xasprintf(&cp, "%c%s", prefix, s);
