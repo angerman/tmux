@@ -71,7 +71,7 @@ struct window_switch_itemdata {
 	char			*text;
 	bitstr_t		*match;
 
-	int			 score;
+	u_int			 score;
 	u_int			 order;
 };
 
@@ -475,19 +475,48 @@ window_switch_run_command(struct window_switch_modedata *data, struct client *c)
 static void
 window_switch_key(struct window_mode_entry *wme, struct client *c,
     __unused struct session *s, __unused struct winlink *wl, key_code key,
-    __unused struct mouse_event *m)
+    struct mouse_event *m)
 {
 	struct window_pane		*wp = wme->wp;
 	struct window_switch_modedata	*data = wme->data;
 	struct utf8_data		 ud, *udp;
 	char				*f;
-	u_int				 i, visible;
+	u_int				 visible, current = data->current;
+	u_int				 i, x, y, size = data->matches_size;
+
+	if (KEYC_IS_MOUSE(key)) {
+		if (m == NULL || cmd_mouse_at(wp, m, &x, &y, 0) != 0)
+			return;
+		switch (key) {
+		case KEYC_WHEELUP_PANE:
+			if (size != 0 && current != 0)
+				window_switch_set_current(data, current - 1);
+			goto moved;
+		case KEYC_WHEELDOWN_PANE:
+			if (size != 0 && current != size - 1)
+				window_switch_set_current(data, current + 1);
+			goto moved;
+		case KEYC_MOUSEDOWN1_PANE:
+		case KEYC_DOUBLECLICK1_PANE:
+			if (y >= window_switch_visible(data) ||
+			    data->offset + y >= size)
+				return;
+			window_switch_set_current(data, data->offset + y);
+			if (key == KEYC_DOUBLECLICK1_PANE) {
+				if (window_switch_run_command(data, c))
+					window_pane_reset_mode(wp);
+				return;
+			}
+			goto moved;
+		}
+		return;
+	}
 
 	switch (key) {
 	case '\r':
 		if (window_switch_run_command(data, c))
 			window_pane_reset_mode(wp);
-		break;
+		return;
 	case '\033': /* Escape */
 	case '['|KEYC_CTRL:
 	case 'c'|KEYC_CTRL:
@@ -497,40 +526,40 @@ window_switch_key(struct window_mode_entry *wme, struct client *c,
 	case KEYC_UP:
 	case 'p'|KEYC_CTRL:
 	case 'k'|KEYC_CTRL:
-		if (data->matches_size == 0)
+		if (size == 0)
 			goto moved;
-		if (data->current == 0)
-			window_switch_set_current(data, data->matches_size - 1);
+		if (current == 0)
+			window_switch_set_current(data, size - 1);
 		else
-			window_switch_set_current(data, data->current - 1);
+			window_switch_set_current(data, current - 1);
 		goto moved;
 	case KEYC_DOWN:
 	case 'n'|KEYC_CTRL:
 	case 'j'|KEYC_CTRL:
-		if (data->matches_size == 0)
+		if (size == 0)
 			goto moved;
-		if (data->current == data->matches_size - 1)
+		if (current == size - 1)
 			window_switch_set_current(data, 0);
 		else
-			window_switch_set_current(data, data->current + 1);
+			window_switch_set_current(data, current + 1);
 		goto moved;
 	case KEYC_PPAGE:
 		visible = window_switch_visible(data);
-		if (data->current >= visible)
-			window_switch_set_current(data, data->current - visible);
+		if (current >= visible)
+			window_switch_set_current(data, current - visible);
 		else
 			window_switch_set_current(data, 0);
 		goto moved;
 	case KEYC_NPAGE:
 		visible = window_switch_visible(data);
-		window_switch_set_current(data, data->current + visible);
+		window_switch_set_current(data, current + visible);
 		goto moved;
 	case KEYC_HOME:
 		window_switch_set_current(data, 0);
 		goto moved;
 	case KEYC_END:
-		if (data->matches_size > 0)
-			window_switch_set_current(data, data->matches_size - 1);
+		if (size > 0)
+			window_switch_set_current(data, size - 1);
 		goto moved;
 	case KEYC_BSPACE:
 		udp = utf8_fromcstr(data->filter);
