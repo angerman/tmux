@@ -175,7 +175,7 @@ window_switch_build(struct window_switch_modedata *data)
 {
 	struct window_switch_itemdata	 *item, **m = NULL;
 	const char			 *f = data->filter;
-	u_int				  ns, nw, i, n = 0, order = 0, *p, np;
+	u_int				  ns, nw, i, n = 0, order = 0;
 	u_int				  sx = screen_size_x(&data->screen);
 	struct session			**sl;
 	struct winlink			**wl;
@@ -341,8 +341,8 @@ window_switch_free(struct window_mode_entry *wme)
 	struct window_switch_modedata	*data = wme->data;
 	u_int				 i;
 
-	if (mtd->zoomed == 0)
-		server_unzoom_window(wp->window);
+	if (data->zoomed == 0)
+		server_unzoom_window(wme->wp->window);
 
 	for (i = 0; i < data->item_size; i++)
 		window_switch_free_item(data->item_list[i]);
