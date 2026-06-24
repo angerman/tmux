@@ -34,11 +34,16 @@ static void		 window_switch_key(struct window_mode_entry *,
 
 #define WINDOW_SWITCH_DEFAULT_COMMAND "switch-client -Zt '%%'"
 
-#define WINDOW_SWITCH_DEFAULT_FORMAT \
+#define WINDOW_SWITCH_DEFAULT_FORMAT		\
 	"#{?window_format," \
-		"#{window_name} #[dim]#{session_name}:#{window_index}#{window_flags}#[default] #[dim]#{pane_current_command}#[default] #[dim]#{pane_title}#[default]" \
+		"#{window_name} " \
+		"#[dim]#{session_name}:#{window_index}#{window_flags}#[default] " \
+		"#[dim]#{pane_current_command}#[default] #[dim]#{pane_title}#[default]" \
 	"," \
-		"#{session_name} #[dim]#{session_windows} windows#[default] #{?session_attached,#[bold]attached#[default],#[dim]detached#[default]} #[dim]#{window_name}#[default]" \
+		"#{session_name} " \
+		"#[dim]#{session_windows} windows#[default] " \
+		"#{?session_attached,attached,#[dim]detached#[default]} " \
+		"#[dim]#{window_name}#[default]" \
 	"}"
 
 const struct window_mode window_switch_mode = {
@@ -71,7 +76,7 @@ struct window_switch_itemdata {
 
 struct window_switch_modedata {
 	struct window_pane		 *wp;
-	struct screen		  	  screen;
+	struct screen			  screen;
 	int				  zoomed;
 
 	char				 *format;
@@ -278,7 +283,9 @@ window_switch_draw_screen(struct window_mode_entry *wme)
 	free(expanded);
 	format_free(ft);
 
-	if (width >= sx) {
+	if (width < sx)
+		s->mode |= MODE_CURSOR;
+	else {
 		s->mode &= ~MODE_CURSOR;
 		width = 0;
 	}
@@ -334,6 +341,9 @@ window_switch_free(struct window_mode_entry *wme)
 	struct window_switch_modedata	*data = wme->data;
 	u_int				 i;
 
+	if (mtd->zoomed == 0)
+		server_unzoom_window(wp->window);
+
 	for (i = 0; i < data->item_size; i++)
 		window_switch_free_item(data->item_list[i]);
 	free(data->item_list);
@@ -354,6 +364,7 @@ window_switch_resize(struct window_mode_entry *wme, u_int sx, u_int sy)
 	struct screen			*s = &data->screen;
 
 	screen_resize(s, sx, sy, 0);
+	window_switch_build(data);
 	window_switch_draw_screen(wme);
 }
 
@@ -414,8 +425,9 @@ window_switch_key(struct window_mode_entry *wme, __unused struct client *c,
 	case '\r':
 		//window_switch_select_current(data, c);
 		/* FALLTHROUGH */
-	case 'q':
 	case '\033': /* Escape */
+	case '['|KEYC_CTRL:
+	case 'g'|KEYC_CTRL:
 		window_pane_reset_mode(wp);
 		return;
 	case KEYC_BSPACE:
@@ -427,6 +439,7 @@ window_switch_key(struct window_mode_entry *wme, __unused struct client *c,
 		udp[i].size = 0;
 		free(data->filter);
 		data->filter = utf8_tocstr(udp);
+		free(udp);
 		break;
 	default:
 		if (KEYC_IS_UNICODE(key))
