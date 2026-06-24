@@ -456,6 +456,10 @@ window_switch_key(struct window_mode_entry *wme, struct client *c,
 		data->filter = utf8_tocstr(udp);
 		free(udp);
 		break;
+	case 'u'|KEYC_CTRL:
+		free(data->filter);
+		data->filter = xstrdup("");
+		break;
 	default:
 		if (KEYC_IS_UNICODE(key))
 			utf8_to_data(key, &ud);
