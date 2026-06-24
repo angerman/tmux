@@ -27,50 +27,41 @@
 #include "tmux.h"
 
 struct prompt {
-	char			*string;
-	struct utf8_data	*buffer;
-	struct cmd_find_state	 state;
-	char			*last;
-	size_t			 index;
+	char			 *string;
+	struct utf8_data	 *buffer;
+	struct cmd_find_state	  state;
+	char			 *last;
+	size_t			  index;
 
-	prompt_input_cb		 inputcb;
-	prompt_free_cb		 freecb;
-	void			*data;
+	prompt_input_cb		  inputcb;
+	prompt_free_cb		  freecb;
+	void			 *data;
 
-	char			*message_format;
-	int			 keys;
-	char			*word_separators;
-	struct grid_cell	 style;
-	struct grid_cell	 command_style;
-	enum screen_cursor_style cstyle;
-	enum screen_cursor_style command_cstyle;
-	int			 ccolour;
-	int			 cmode;
-	int			 command_cmode;
+	char			 *message_format;
+	int			  keys;
+	char			 *word_separators;
+	struct grid_cell	  style;
+	struct grid_cell	  command_style;
+	enum screen_cursor_style  cstyle;
+	enum screen_cursor_style  command_cstyle;
+	int			  ccolour;
+	int			  cmode;
+	int			  command_cmode;
 
-	enum prompt_type	 type;
-	int			 flags;
-	int			 closed;
+	enum prompt_type	  type;
+	int			  flags;
+	int			  closed;
 
-	u_int			 hindex[PROMPT_NTYPES];
-	struct utf8_data	*copied;
+	u_int			  hindex[PROMPT_NTYPES];
+	struct utf8_data	 *copied;
 
-	u_int			 menu_x;
-	u_int			 menu_y;
-	u_int			 menu_height;
-	int			 menu_above;
+	char			**complete_list;
+	u_int			  complete_size;
+	char			 *complete_display;
 };
 
-struct prompt_menu {
-	struct client	 *c;
-	struct prompt	 *pr;
-	u_int		  start;
-	u_int		  size;
-	char		**list;
-};
-
-static char	*prompt_complete(struct prompt *, struct client *, const char *,
-		    u_int);
+static char	*prompt_complete(struct prompt *, const char *, u_int);
+static void	 prompt_clear_complete(struct prompt *);
 
 /* Set prompt options from session options. */
 void
@@ -168,6 +159,7 @@ prompt_free(struct prompt *pr)
 		free(pr->string);
 		free(pr->buffer);
 		free(pr->copied);
+		prompt_clear_complete(pr);
 		free(pr);
 	}
 }
@@ -235,6 +227,7 @@ prompt_update(struct prompt *pr, const char *msg, const char *input)
 
 	memset(pr->hindex, 0, sizeof pr->hindex);
 	pr->closed = 0;
+	prompt_clear_complete(pr);
 
 	format_free(ft);
 }
@@ -295,6 +288,39 @@ prompt_redraw_quote(const struct prompt *pr, u_int pcursor,
 	return (1);
 }
 
+/* Draw the stored completion matches. */
+static void
+prompt_draw_complete(struct prompt *pr, struct screen_write_ctx *ctx, u_int ax,
+    u_int aw, u_int cx, u_int py, const struct grid_cell *base)
+{
+	struct grid_cell	 gc;
+	struct utf8_data	*ud;
+	u_int			 avail, width, i;
+
+	if (pr->complete_display == NULL)
+		return;
+	if (pr->index != utf8_strlen(pr->buffer))
+		return;
+	if (cx < ax || cx - ax >= aw)
+		return;
+	avail = aw - (cx - ax);
+
+	memcpy(&gc, base, sizeof gc);
+	gc.attr |= GRID_ATTR_UNDERSCORE;
+	screen_write_cursormove(ctx, cx, py, 0);
+
+	width = 0;
+	ud = utf8_fromcstr(pr->complete_display);
+	for (i = 0; ud[i].size != 0; i++) {
+		if (width + ud[i].width > avail)
+			break;
+		utf8_copy(&gc.data, &ud[i]);
+		screen_write_cell(ctx, &gc);
+		width += ud[i].width;
+	}
+	free(ud);
+}
+
 /* Draw prompt. */
 void
 prompt_draw(struct prompt *pr, struct prompt_draw_data *pd)
@@ -308,16 +334,6 @@ prompt_draw(struct prompt *pr, struct prompt_draw_data *pd)
 	u_int			 i, offset, left, start, width;
 	u_int			 pcursor, pwidth;
 	char			*expanded, *prompt, *tmp;
-
-	/*
-	 * Seed the completion menu geometry. The caller knows where the prompt
-	 * is drawn (which need not be on the status line) and how much room is
-	 * available above or below it; menu_x is set once start is known below.
-	 */
-	pr->menu_x = pd->menu_x;
-	pr->menu_y = pd->menu_y;
-	pr->menu_height = pd->menu_height;
-	pr->menu_above = pd->menu_above;
 
 	/* Choose the cursor colour and style for this prompt. */
 	if (pr->flags & PROMPT_COMMANDMODE) {
@@ -357,7 +373,6 @@ prompt_draw(struct prompt *pr, struct prompt_draw_data *pd)
 	if (start > aw)
 		start = aw;
 	*cx = ax + start;
-	pr->menu_x += start;
 
 	screen_write_cursormove(ctx, ax, py, 0);
 	format_draw(ctx, &gc, aw, expanded, NULL, 0);
@@ -397,6 +412,8 @@ prompt_draw(struct prompt *pr, struct prompt_draw_data *pd)
 			break;
 	}
 	prompt_redraw_quote(pr, pcursor, ctx, offset, pwidth, &width, &gc);
+
+	prompt_draw_complete(pr, ctx, ax, aw, *cx, py, &gc);
 }
 
 /* Is this a separator? */
@@ -680,7 +697,7 @@ prompt_paste(struct prompt *pr)
 
 /* Finish completion. */
 static int
-prompt_replace_complete(struct prompt *pr, struct client *c, const char *s)
+prompt_replace_complete(struct prompt *pr, const char *s)
 {
 	char			 word[64], *allocated = NULL;
 	size_t			 size, n, off, idx, used;
@@ -722,8 +739,7 @@ prompt_replace_complete(struct prompt *pr, struct client *c, const char *s)
 
 	/* Try to complete it. */
 	if (s == NULL) {
-		allocated = prompt_complete(pr, c, word,
-		    first - pr->buffer);
+		allocated = prompt_complete(pr, word, first - pr->buffer);
 		if (allocated == NULL)
 			return (0);
 		s = allocated;
@@ -906,6 +922,13 @@ prompt_key(struct prompt *pr, struct client *c, key_code key, int *redraw)
 	int			 word_is_separators;
 
 	pr->closed = 0;
+
+	/*
+	 * Drop any inline completion matches; the Tab handler rebuilds them if
+	 * completion is still applicable.
+	 */
+	prompt_clear_complete(pr);
+
 	if (pr->flags & PROMPT_KEY) {
 		ks = key_string_lookup_key(key, 0);
 		if (!prompt_fire_callback(pr, ks, PROMPT_KEY_CLOSE, NULL))
@@ -987,7 +1010,7 @@ process_key:
 		}
 		break;
 	case '\011': /* Tab */
-		if (prompt_replace_complete(pr, c, NULL))
+		if (prompt_replace_complete(pr, NULL))
 			goto changed;
 		break;
 	case KEYC_BSPACE:
@@ -1293,90 +1316,6 @@ prompt_complete_prefix(char **list, u_int size)
 	return (out);
 }
 
-/* Complete word menu callback. */
-static void
-prompt_menu_callback(__unused struct menu *menu, u_int idx, key_code key,
-    void *data)
-{
-	struct prompt_menu	*pm = data;
-	struct prompt		*pr = pm->pr;
-	struct client		*c = pm->c;
-	u_int			 i;
-
-	if (key != KEYC_NONE) {
-		idx += pm->start;
-		if (prompt_replace_complete(pr, c, pm->list[idx])) {
-			if (pm->pr->flags & PROMPT_ISMODE)
-				c->flags |= CLIENT_REDRAWWINDOW;
-			else
-				c->flags |= CLIENT_REDRAWSTATUS;
-		}
-	}
-
-	for (i = 0; i < pm->size; i++)
-		free(pm->list[i]);
-	free(pm->list);
-	free(pm);
-}
-
-/* Show complete word menu. */
-static int
-prompt_complete_menu(struct prompt *pr, struct client *c, char **list,
-    u_int size, u_int offset)
-{
-	struct menu		*menu;
-	struct menu_item	 item;
-	struct prompt_menu	*pm;
-	u_int			 height, i, py;
-
-	if (size <= 1)
-		return (0);
-	if (c == NULL || (pr->flags & PROMPT_ISMODE))
-		return (0);
-	if (pr->menu_height < 1)
-		return (0);
-
-	pm = xmalloc(sizeof *pm);
-	pm->c = c;
-	pm->pr = pr;
-	pm->size = size;
-	pm->list = list;
-
-	height = pr->menu_height;
-	if (height > 10)
-		height = 10;
-	if (height > size)
-		height = size;
-	pm->start = size - height;
-
-	menu = menu_create("");
-	for (i = pm->start; i < size; i++) {
-		item.name = list[i];
-		item.key = '0' + (i - pm->start);
-		item.command = NULL;
-		menu_add_item(menu, &item, NULL, c, NULL);
-	}
-
-	if (pr->menu_above)
-		py = pr->menu_y - height - 2;
-	else
-		py = pr->menu_y + 1;
-	offset += pr->menu_x;
-	if (offset > 2)
-		offset -= 2;
-	else
-		offset = 0;
-
-	if (menu_display(menu, MENU_NOMOUSE|MENU_TAB, 0, NULL, offset, py, c,
-	    BOX_LINES_DEFAULT, NULL, NULL, NULL, NULL,
-	    prompt_menu_callback, pm) != 0) {
-		menu_free(menu);
-		free(pm);
-		return (0);
-	}
-	return (1);
-}
-
 /* Sort complete list. */
 static int
 prompt_complete_sort(const void *a, const void *b)
@@ -1386,10 +1325,52 @@ prompt_complete_sort(const void *a, const void *b)
 	return (strcmp(*aa, *bb));
 }
 
-/* Complete word. */
+/* Free the stored inline completion matches. */
+static void
+prompt_clear_complete(struct prompt *pr)
+{
+	u_int	i;
+
+	for (i = 0; i < pr->complete_size; i++)
+		free(pr->complete_list[i]);
+	free(pr->complete_list);
+	pr->complete_list = NULL;
+	pr->complete_size = 0;
+
+	free(pr->complete_display);
+	pr->complete_display = NULL;
+}
+
+/*
+ * Store the match list for inline display and build the dim suffix string: a
+ * leading space then the matches separated by spaces.
+ */
+static void
+prompt_store_complete(struct prompt *pr, char **list, u_int size)
+{
+	char	*display, *cp;
+	u_int	 i;
+
+	prompt_clear_complete(pr);
+	pr->complete_list = list;
+	pr->complete_size = size;
+
+	display = xstrdup("");
+	for (i = 0; i < size; i++) {
+		xasprintf(&cp, "%s %s", display, list[i]);
+		free(display);
+		display = cp;
+	}
+	pr->complete_display = display;
+}
+
+/*
+ * Complete word. Returns the text to insert when a unique match or a longer
+ * common prefix is available; otherwise stores the match list for inline
+ * display (and returns NULL) or returns NULL if there is nothing to do.
+ */
 static char *
-prompt_complete(struct prompt *pr, struct client *c, const char *word,
-    u_int offset)
+prompt_complete(struct prompt *pr, const char *word, u_int offset)
 {
 	char	**list = NULL, *out = NULL;
 	u_int	  size = 0, i;
@@ -1399,30 +1380,34 @@ prompt_complete(struct prompt *pr, struct client *c, const char *word,
 		return (NULL);
 
 	list = prompt_complete_commands(&size, word);
-	if (size == 0)
-		out = NULL;
-	else if (size == 1)
+	if (size == 0) {
+		free(list);
+		return (NULL);
+	}
+	qsort(list, size, sizeof *list, prompt_complete_sort);
+	for (i = 0; i < size; i++)
+		log_debug("complete %u: %s", i, list[i]);
+
+	if (size == 1)
 		xasprintf(&out, "%s ", list[0]);
 	else
 		out = prompt_complete_prefix(list, size);
-
-	if (size != 0) {
-		qsort(list, size, sizeof *list, prompt_complete_sort);
-		for (i = 0; i < size; i++)
-			log_debug("complete %u: %s", i, list[i]);
-	}
-
 	if (out != NULL && strcmp(word, out) == 0) {
 		free(out);
 		out = NULL;
 	}
-	if (out != NULL ||
-	    !prompt_complete_menu(pr, c, list, size, offset)) {
+
+	if (out != NULL || size <= 1) {
+		/* Inserting (or nothing to show): drop the list. */
 		for (i = 0; i < size; i++)
 			free(list[i]);
 		free(list);
+		return (out);
 	}
-	return (out);
+
+	/* Multiple matches but nothing to insert: keep them for redraw. */
+	prompt_store_complete(pr, list, size);
+	return (NULL);
 }
 
 
