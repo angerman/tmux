@@ -2071,6 +2071,18 @@ struct prompt_create_data {
 	const char		*input;
 	enum prompt_type	 type;
 	int			 flags;
+
+	struct grid_cell	 style;
+	struct grid_cell	 command_style;
+	enum screen_cursor_style cstyle;
+	enum screen_cursor_style command_cstyle;
+	int			 ccolour;
+	int			 cmode;
+	int			 command_cmode;
+	const char		*message_format;
+	int			 keys;
+	const char		*word_separators;
+
 	prompt_input_cb		 inputcb;
 	prompt_free_cb		 freecb;
 	void			*data;
@@ -3188,15 +3200,14 @@ enum prompt_key_result status_prompt_key(struct client *, key_code);
 void	 status_prompt_update(struct client *, const char *, const char *);
 
 /* prompt.c */
-struct prompt *prompt_create(struct client *,
-	     const struct prompt_create_data *);
+void	 prompt_set_options(struct prompt_create_data *, struct session *);
+struct prompt *prompt_create(const struct prompt_create_data *);
 void	 prompt_free(struct prompt *);
 void	 prompt_incremental_start(struct prompt *, struct client *);
 void	 prompt_draw(struct prompt *, struct prompt_draw_data *);
 enum prompt_key_result prompt_key(struct prompt *, struct client *, key_code,
     int *);
-void	 prompt_update(struct prompt *, struct client *, const char *,
-	     const char *);
+void	 prompt_update(struct prompt *, const char *, const char *);
 int	 prompt_closed(struct prompt *);
 enum prompt_type prompt_type(const char *);
 const char *prompt_type_string(enum prompt_type);

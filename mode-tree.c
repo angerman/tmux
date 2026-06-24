@@ -1045,14 +1045,18 @@ mode_tree_set_prompt(struct mode_tree_data *mtd, struct client *c,
     const char *prompt, const char *input, enum prompt_type type, int flags,
     prompt_input_cb inputcb, prompt_free_cb freecb, void *data)
 {
+	struct session			*s;
 	struct options			*oo;
 	struct prompt_create_data	 pd;
 	struct mode_tree_prompt		*mtp;
 
-	if (c->session != NULL)
-		oo = c->session->options;
-	else
+	if (c != NULL && c->session != NULL) {
+		s = c->session;
+		oo = s->options;
+	} else {
+		s = NULL;
 		oo = global_s_options;
+	}
 
 	mode_tree_clear_prompt(mtd);
 
@@ -1069,14 +1073,15 @@ mode_tree_set_prompt(struct mode_tree_data *mtd, struct client *c,
 	mtd->prompt_top = options_get_number(oo, "status-position") == 0;
 
 	memset(&pd, 0, sizeof pd);
+	prompt_set_options(&pd, s);
 	pd.prompt = prompt;
 	pd.input = input;
 	pd.type = type;
-	pd.flags = flags | PROMPT_ISMODE;
+	pd.flags = flags|PROMPT_ISMODE;
 	pd.inputcb = mode_tree_prompt_input_callback;
 	pd.freecb = mode_tree_prompt_free_callback;
 	pd.data = mtp;
-	mtd->prompt = prompt_create(c, &pd);
+	mtd->prompt = prompt_create(&pd);
 
 	mode_tree_draw(mtd);
 	mtd->wp->flags |= PANE_REDRAW;

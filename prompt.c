@@ -38,6 +38,8 @@ struct prompt {
 	void			*data;
 
 	char			*message_format;
+	int			 keys;
+	char			*word_separators;
 	struct grid_cell	 style;
 	struct grid_cell	 command_style;
 	enum screen_cursor_style cstyle;
@@ -70,24 +72,46 @@ struct prompt_menu {
 static char	*prompt_complete(struct prompt *, struct client *, const char *,
 		    u_int);
 
+/* Set prompt options from session options. */
+void
+prompt_set_options(struct prompt_create_data *pd, struct session *s)
+{
+	struct options	*oo;
+	u_int		 n;
+
+	if (s != NULL)
+		oo = s->options;
+	else
+		oo = global_s_options;
+
+	style_apply(&pd->style, oo, "message-style", NULL);
+	style_apply(&pd->command_style, oo, "message-command-style", NULL);
+	n = options_get_number(oo, "prompt-cursor-style");
+	screen_set_cursor_style(n, &pd->cstyle, &pd->cmode);
+	n = options_get_number(oo, "prompt-command-cursor-style");
+	screen_set_cursor_style(n, &pd->command_cstyle, &pd->command_cmode);
+	pd->ccolour = options_get_number(oo, "prompt-cursor-colour");
+	pd->message_format = options_get_string(oo, "message-format");
+	pd->keys = options_get_number(oo, "status-keys");
+	pd->word_separators = options_get_string(oo, "word-separators");
+}
+
 /* Create prompt. */
 struct prompt *
-prompt_create(struct client *c, const struct prompt_create_data *pd)
+prompt_create(const struct prompt_create_data *pd)
 {
 	struct prompt		*pr;
 	struct format_tree	*ft;
-	struct options		*oo = c->session->options;
 	const char		*input = pd->input;
 	char			*tmp;
-	u_int			 n;
 
 	pr = xcalloc(1, sizeof *pr);
 
 	if (pd->fs != NULL) {
-		ft = format_create_from_state(NULL, c, pd->fs);
+		ft = format_create_from_state(NULL, NULL, pd->fs);
 		cmd_find_copy_state(&pr->state, pd->fs);
 	} else {
-		ft = format_create_defaults(NULL, c, NULL, NULL, NULL);
+		ft = format_create_defaults(NULL, NULL, NULL, NULL, NULL);
 		cmd_find_clear_state(&pr->state, 0);
 	}
 
@@ -115,14 +139,17 @@ prompt_create(struct client *c, const struct prompt_create_data *pd)
 	pr->flags = pd->flags;
 	pr->type = pd->type;
 
-	style_apply(&pr->style, oo, "message-style", NULL);
-	style_apply(&pr->command_style, oo, "message-command-style", NULL);
-	n = options_get_number(oo, "prompt-cursor-style");
-	screen_set_cursor_style(n, &pr->cstyle, &pr->cmode);
-	n = options_get_number(oo, "prompt-command-cursor-style");
-	screen_set_cursor_style(n, &pr->command_cstyle, &pr->command_cmode);
-	pr->ccolour = options_get_number(oo, "prompt-cursor-colour");
-	pr->message_format = xstrdup(options_get_string(oo, "message-format"));
+	memcpy(&pr->style, &pd->style, sizeof pr->style);
+	memcpy(&pr->command_style, &pd->command_style,
+	    sizeof pr->command_style);
+	pr->cstyle = pd->cstyle;
+	pr->command_cstyle = pd->command_cstyle;
+	pr->ccolour = pd->ccolour;
+	pr->cmode = pd->cmode;
+	pr->command_cmode = pd->command_cmode;
+	pr->message_format = xstrdup(pd->message_format);
+	pr->keys = pd->keys;
+	pr->word_separators = xstrdup(pd->word_separators);
 
 	format_free(ft);
 	return (pr);
@@ -136,6 +163,7 @@ prompt_free(struct prompt *pr)
 		if (pr->freecb != NULL && pr->data != NULL)
 			pr->freecb(pr->data);
 		free(pr->message_format);
+		free(pr->word_separators);
 		free(pr->last);
 		free(pr->string);
 		free(pr->buffer);
@@ -155,7 +183,9 @@ prompt_fire_callback(struct prompt *pr, struct client *c, const char *s,
 	enum prompt_result	result;
 
 	result = pr->inputcb(c, pr->data, s, type);
-	if ((~pr->flags & PROMPT_ISMODE) && c->prompt != pr) /* replaced */
+	if (c != NULL &&
+	    (~pr->flags & PROMPT_ISMODE) &&
+	    c->prompt != pr)
 		return (1);
 	if (result == PROMPT_CLOSE) {
 		pr->closed = 1;
@@ -183,22 +213,26 @@ prompt_incremental_start(struct prompt *pr, struct client *c)
 
 /* Update prompt. */
 void
-prompt_update(struct prompt *pr, struct client *c, const char *msg,
-    const char *input)
+prompt_update(struct prompt *pr, const char *msg, const char *input)
 {
 	struct format_tree	*ft;
 	char			*tmp;
 
 	if (cmd_find_valid_state(&pr->state))
-		ft = format_create_from_state(NULL, c, &pr->state);
+		ft = format_create_from_state(NULL, NULL, &pr->state);
 	else
-		ft = format_create_defaults(NULL, c, NULL, NULL, NULL);
+		ft = format_create_defaults(NULL, NULL, NULL, NULL, NULL);
 
 	free(pr->string);
 	pr->string = xstrdup(msg);
 
+	if (input == NULL)
+		input = "";
 	free(pr->buffer);
-	tmp = format_expand_time(ft, input);
+	if (pr->flags & PROMPT_NOFORMAT)
+		tmp = xstrdup(input);
+	else
+		tmp = format_expand_time(ft, input);
 	pr->buffer = utf8_fromcstr(tmp);
 	pr->index = utf8_strlen(pr->buffer);
 	free(tmp);
@@ -868,13 +902,12 @@ prompt_check_move(struct prompt *pr, struct client *c, key_code key)
 enum prompt_key_result
 prompt_key(struct prompt *pr, struct client *c, key_code key, int *redraw)
 {
-	struct options		*oo = c->session->options;
 	char			*s, *cp, prefix = '=';
-	const char		*histstr, *separators = NULL, *ks;
+	const char		*histstr, *ks;
 	size_t			 size, idx;
 	struct utf8_data	 tmp;
 	enum prompt_key_result	 result = PROMPT_KEY_HANDLED;
-	int			 keys, word_is_separators;
+	int			 word_is_separators;
 
 	pr->closed = 0;
 	if (pr->flags & PROMPT_KEY) {
@@ -911,8 +944,7 @@ prompt_key(struct prompt *pr, struct client *c, key_code key, int *redraw)
 		goto append_key;
 	}
 
-	keys = options_get_number(c->session->options, "status-keys");
-	if (keys == MODEKEY_VI) {
+	if (pr->keys == MODEKEY_VI) {
 		switch (prompt_translate_key(pr, key, &key, redraw)) {
 		case 1:
 			goto process_key;
@@ -1000,16 +1032,14 @@ process_key:
 		}
 		break;
 	case 'w'|KEYC_CTRL:
-		separators = options_get_string(oo, "word-separators");
-		idx = pr->index;
-
 		/* Find non-whitespace. */
+		idx = pr->index;
 		while (idx != 0) {
 			idx--;
 			if (!prompt_space(&pr->buffer[idx]))
 				break;
 		}
-		word_is_separators = prompt_in_list(separators,
+		word_is_separators = prompt_in_list(pr->word_separators,
 		    &pr->buffer[idx]);
 
 		/* Find the character before the beginning of the word. */
@@ -1017,7 +1047,7 @@ process_key:
 			idx--;
 			if (prompt_space(&pr->buffer[idx]) ||
 			    word_is_separators != prompt_in_list(
-			    separators, &pr->buffer[idx])) {
+			    pr->word_separators, &pr->buffer[idx])) {
 				/* Go back to the word. */
 				idx++;
 				break;
@@ -1039,30 +1069,26 @@ process_key:
 		goto changed;
 	case KEYC_RIGHT|KEYC_CTRL:
 	case 'f'|KEYC_META:
-		separators = options_get_string(oo, "word-separators");
-		prompt_forward_word(pr, size, 0, separators);
+		prompt_forward_word(pr, size, 0, pr->word_separators);
 		goto changed;
 	case 'E'|KEYC_VI:
 		prompt_end_word(pr, size, "");
 		goto changed;
 	case 'e'|KEYC_VI:
-		separators = options_get_string(oo, "word-separators");
-		prompt_end_word(pr, size, separators);
+		prompt_end_word(pr, size, pr->word_separators);
 		goto changed;
 	case 'W'|KEYC_VI:
 		prompt_forward_word(pr, size, 1, "");
 		goto changed;
 	case 'w'|KEYC_VI:
-		separators = options_get_string(oo, "word-separators");
-		prompt_forward_word(pr, size, 1, separators);
+		prompt_forward_word(pr, size, 1, pr->word_separators);
 		goto changed;
 	case 'B'|KEYC_VI:
 		prompt_backward_word(pr, "");
 		goto changed;
 	case KEYC_LEFT|KEYC_CTRL:
 	case 'b'|KEYC_META:
-		separators = options_get_string(oo, "word-separators");
-		prompt_backward_word(pr, separators);
+		prompt_backward_word(pr, pr->word_separators);
 		goto changed;
 	case KEYC_UP:
 	case 'p'|KEYC_CTRL:
@@ -1308,6 +1334,8 @@ prompt_complete_menu(struct prompt *pr, struct client *c, char **list,
 	u_int			 height, i, py;
 
 	if (size <= 1)
+		return (0);
+	if (c == NULL || (pr->flags & PROMPT_ISMODE))
 		return (0);
 	if (pr->menu_height < 1)
 		return (0);

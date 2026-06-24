@@ -548,6 +548,8 @@ status_prompt_set(struct client *c, struct cmd_find_state *fs,
 	status_prompt_clear(c);
 	status_push_screen(c);
 
+	memset(&pd, 0, sizeof pd);
+	prompt_set_options(&pd, c->session);
 	pd.fs = fs;
 	pd.prompt = msg;
 	pd.input = input;
@@ -556,7 +558,7 @@ status_prompt_set(struct client *c, struct cmd_find_state *fs,
 	pd.inputcb = inputcb;
 	pd.freecb = freecb;
 	pd.data = data;
-	c->prompt = prompt_create(c, &pd);
+	c->prompt = prompt_create(&pd);
 
 	if ((~flags & PROMPT_INCREMENTAL) && (~flags & PROMPT_NOFREEZE))
 		c->tty.flags |= TTY_FREEZE;
@@ -590,7 +592,7 @@ status_prompt_update(struct client *c, const char *msg, const char *input)
 {
 	if (c->prompt == NULL)
 		return;
-	prompt_update(c->prompt, c, msg, input);
+	prompt_update(c->prompt, msg, input);
 	c->flags |= CLIENT_REDRAWSTATUS;
 }
 
