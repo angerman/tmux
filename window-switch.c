@@ -36,9 +36,9 @@ static void		 window_switch_key(struct window_mode_entry *,
 
 #define WINDOW_SWITCH_DEFAULT_FORMAT \
 	"#{?window_format," \
-		"#{window_name} #[dim](#{session_name})#[align=right]#{pane_current_command}" \
+		"#{window_name} #[dim]#{session_name}:#{window_index}#{window_flags}#[default] #[dim]#{pane_current_command}#[default] #[dim]#{pane_title}#[default]" \
 	"," \
-		"#{session_name}" \
+		"#{session_name} #[dim]#{session_windows} windows#[default] #{?session_attached,#[bold]attached#[default],#[dim]detached#[default]} #[dim]#{window_name}#[default]" \
 	"}"
 
 const struct window_mode window_switch_mode = {
