@@ -249,8 +249,6 @@ prompt_draw(struct prompt *pr, struct client *c, struct screen_write_ctx *ctx,
 	const char		*msgfmt;
 	char			*expanded, *prompt, *tmp;
 
-	pr->menu_x = ax;
-
 	/* Choose the cursor colour and style for this prompt. */
 	n = options_get_number(oo, "prompt-cursor-colour");
 	s->default_ccolour = n;
@@ -290,6 +288,7 @@ prompt_draw(struct prompt *pr, struct client *c, struct screen_write_ctx *ctx,
 	if (start > aw)
 		start = aw;
 	*cx = ax + start;
+	pr->menu_x = ax + start;
 
 	screen_write_cursormove(ctx, ax, py, 0);
 	format_draw(ctx, &gc, aw, expanded, NULL, 0);
@@ -1298,7 +1297,6 @@ prompt_complete_list_menu(struct prompt *pr, struct client *c, char **list,
 		py = lines;
 	else
 		py = c->tty.sy - 3 - height;
-	offset += utf8_cstrwidth(pr->string);
 	offset += pr->menu_x;
 	if (offset > 2)
 		offset -= 2;
