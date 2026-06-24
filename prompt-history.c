@@ -155,6 +155,8 @@ prompt_up_history(u_int *idx, u_int type)
 	 * empty.
 	 */
 
+	if (type >= PROMPT_NTYPES)
+		return (NULL);
 	if (prompt_hsize[type] == 0 || idx[type] == prompt_hsize[type])
 		return (NULL);
 	idx[type]++;
@@ -165,6 +167,8 @@ prompt_up_history(u_int *idx, u_int type)
 const char *
 prompt_down_history(u_int *idx, u_int type)
 {
+	if (type >= PROMPT_NTYPES)
+		return ("");
 	if (prompt_hsize[type] == 0 || idx[type] == 0)
 		return ("");
 	idx[type]--;
@@ -179,6 +183,9 @@ prompt_add_history(const char *line, u_int type)
 {
 	u_int	i, oldsize, newsize, freecount, hlimit, new = 1;
 	size_t	movesize;
+
+	if (type >= PROMPT_NTYPES)
+		return;
 
 	oldsize = prompt_hsize[type];
 	if (oldsize > 0 &&

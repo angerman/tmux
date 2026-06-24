@@ -137,14 +137,6 @@ prompt_start(struct prompt *pr, struct client *c)
 	}
 }
 
-/* Accept prompt. */
-void
-prompt_accept(struct prompt *pr, struct client *c, const char *s)
-{
-	pr->inputcb(c, pr->data, s, PROMPT_KEY_CLOSE);
-	pr->closed = 1;
-}
-
 /* Update prompt. */
 void
 prompt_update(struct prompt *pr, struct client *c, const char *msg,

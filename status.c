@@ -529,10 +529,8 @@ status_prompt_accept(__unused struct cmdq_item *item, void *data)
 {
 	struct client	*c = data;
 
-	if (c->prompt != NULL) {
-		prompt_accept(c->prompt, c, "y");
-		status_prompt_clear(c);
-	}
+	if (c->prompt != NULL)
+		status_prompt_key(c, 'y');
 	return (CMD_RETURN_NORMAL);
 }
 
