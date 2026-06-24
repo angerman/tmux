@@ -3050,6 +3050,59 @@ The
 .Ic customize-mode
 command works only if at least one client is attached.
 .It Xo
+.Ic switch\-mode
+.Op Fl kswZ
+.Op Fl F Ar format
+.Op Fl f Ar filter
+.Op Fl t Ar target\-pane
+.Op Ar command
+.Xc
+Put a pane into switch mode, where a session or window may be chosen
+interactively from a list.
+Each session or window is shown on one line and the list is narrowed by typing:
+the typed text is a filter which is matched against each item with fuzzy
+matching and only matching items are shown, sorted by how well they match.
+.Fl s
+lists sessions (the default) and
+.Fl w
+lists windows.
+.Fl Z
+zooms the pane.
+The following keys may be used in switch mode:
+.Bl -column "KeyXXX" "Function" -offset indent
+.It Sy "Key" Ta Sy "Function"
+.It Li "Enter" Ta "Choose the selected item"
+.It Li "Up" Ta "Select the previous item"
+.It Li "Down" Ta "Select the next item"
+.It Li "Escape" Ta "Exit mode"
+.El
+.Pp
+Any other key is appended to the filter.
+.Pp
+After a session or window is chosen, the first instance of
+.Ql %%
+and all instances of
+.Ql %1
+are replaced by the target in
+.Ar command
+and the result executed as a command.
+If
+.Ar command
+is not given, "switch\-client \-Zt \[aq]%%\[aq]" is used.
+.Pp
+.Fl f
+specifies an initial filter.
+.Fl F
+specifies the format for each item in the list.
+.Fl k
+kills the pane when the mode is exited.
+.Pp
+The appearance of matched characters and of the filter line is controlled by the
+.Ic switch\-mode\-match\-style
+and
+.Ic switch\-mode\-filter\-format
+options.
+.It Xo
 .Tg displayp
 .Ic display\-panes
 .Op Fl bN
@@ -5991,6 +6044,25 @@ is enabled.
 .Xc
 When the entire screen is cleared and this option is on, scroll the contents of
 the screen into history before clearing it.
+.Pp
+.It Ic switch\-mode\-filter\-format Ar format
+Set the format used for the filter prompt shown at the bottom of
+.Ic switch\-mode .
+The
+.Ql filter
+format variable is replaced with the text typed so far.
+For more information on formats, see the
+.Sx FORMATS
+section.
+.Pp
+.It Ic switch\-mode\-match\-style Ar style
+Set the style of characters matched by the filter in
+.Ic switch\-mode .
+For how to specify
+.Ar style ,
+see the
+.Sx STYLES
+section.
 .Pp
 .It Xo Ic synchronize\-panes
 .Op Ic on | off
