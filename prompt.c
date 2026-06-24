@@ -37,15 +37,26 @@ struct prompt {
 	prompt_free_cb		 freecb;
 	void			*data;
 
-	u_int			 hindex[PROMPT_NTYPES];
-	struct utf8_data	*saved;
-	int			 flags;
+	char			*message_format;
+	struct grid_cell	 style;
+	struct grid_cell	 command_style;
+	enum screen_cursor_style cstyle;
+	enum screen_cursor_style command_cstyle;
+	int			 ccolour;
+	int			 cmode;
+	int			 command_cmode;
+
 	enum prompt_type	 type;
+	int			 flags;
+	int			 closed;
+
+	u_int			 hindex[PROMPT_NTYPES];
+	struct utf8_data	*copied;
+
 	u_int			 menu_x;
 	u_int			 menu_y;
 	u_int			 menu_height;
 	int			 menu_above;
-	int			 closed;
 };
 
 struct prompt_menu {
@@ -65,8 +76,10 @@ prompt_create(struct client *c, const struct prompt_create_data *pd)
 {
 	struct prompt		*pr;
 	struct format_tree	*ft;
+	struct options		*oo = c->session->options;
 	const char		*input = pd->input;
 	char			*tmp;
+	u_int			 n;
 
 	pr = xcalloc(1, sizeof *pr);
 
@@ -102,6 +115,15 @@ prompt_create(struct client *c, const struct prompt_create_data *pd)
 	pr->flags = pd->flags;
 	pr->type = pd->type;
 
+	style_apply(&pr->style, oo, "message-style", NULL);
+	style_apply(&pr->command_style, oo, "message-command-style", NULL);
+	n = options_get_number(oo, "prompt-cursor-style");
+	screen_set_cursor_style(n, &pr->cstyle, &pr->cmode);
+	n = options_get_number(oo, "prompt-command-cursor-style");
+	screen_set_cursor_style(n, &pr->command_cstyle, &pr->command_cmode);
+	pr->ccolour = options_get_number(oo, "prompt-cursor-colour");
+	pr->message_format = xstrdup(options_get_string(oo, "message-format"));
+
 	format_free(ft);
 	return (pr);
 }
@@ -113,10 +135,11 @@ prompt_free(struct prompt *pr)
 	if (pr != NULL) {
 		if (pr->freecb != NULL && pr->data != NULL)
 			pr->freecb(pr->data);
+		free(pr->message_format);
 		free(pr->last);
 		free(pr->string);
 		free(pr->buffer);
-		free(pr->saved);
+		free(pr->copied);
 		free(pr);
 	}
 }
@@ -143,9 +166,9 @@ prompt_fire_callback(struct prompt *pr, struct client *c, const char *s,
 	return (0);
 }
 
-/* Start prompt. */
+/* Start incremental prompt. */
 void
-prompt_start(struct prompt *pr, struct client *c)
+prompt_incremental_start(struct prompt *pr, struct client *c)
 {
 	char	*tmp, *cp;
 
@@ -244,18 +267,16 @@ prompt_redraw_quote(const struct prompt *pr, u_int pcursor,
 
 /* Draw prompt. */
 void
-prompt_draw(struct prompt *pr, struct client *c, struct prompt_draw_data *pd)
+prompt_draw(struct prompt *pr, struct prompt_draw_data *pd)
 {
-	struct options		*oo = c->session->options;
 	struct screen_write_ctx	*ctx = pd->ctx;
 	struct screen		*s = ctx->s;
 	u_int			 ax = pd->area_x, py = pd->prompt_line;
 	u_int			 aw = pd->area_width, *cx = pd->cursor_x;
 	struct format_tree	*ft;
 	struct grid_cell	 gc;
-	u_int			 i, offset, left, start, width, n;
+	u_int			 i, offset, left, start, width;
 	u_int			 pcursor, pwidth;
-	const char		*msgfmt;
 	char			*expanded, *prompt, *tmp;
 
 	/*
@@ -268,22 +289,22 @@ prompt_draw(struct prompt *pr, struct client *c, struct prompt_draw_data *pd)
 	pr->menu_above = pd->menu_above;
 
 	/* Choose the cursor colour and style for this prompt. */
-	n = options_get_number(oo, "prompt-cursor-colour");
-	s->default_ccolour = n;
 	if (pr->flags & PROMPT_COMMANDMODE) {
-		n = options_get_number(oo, "prompt-command-cursor-style");
-		style_apply(&gc, oo, "message-command-style", NULL);
+		memcpy(&gc, &pr->command_style, sizeof gc);
+		s->default_cstyle = pr->command_cstyle;
+		s->default_mode = pr->command_cmode;
 	} else {
-		n = options_get_number(oo, "prompt-cursor-style");
-		style_apply(&gc, oo, "message-style", NULL);
+		memcpy(&gc, &pr->style, sizeof gc);
+		s->default_cstyle = pr->cstyle;
+		s->default_mode = pr->cmode;
 	}
-	screen_set_cursor_style(n, &s->default_cstyle, &s->default_mode);
+	s->default_ccolour = pr->ccolour;
 
 	/* Expand the prompt itself. */
 	if (cmd_find_valid_state(&pr->state))
-		ft = format_create_from_state(NULL, c, &pr->state);
+		ft = format_create_from_state(NULL, NULL, &pr->state);
 	else
-		ft = format_create_defaults(NULL, c, NULL, NULL, NULL);
+		ft = format_create_defaults(NULL, NULL, NULL, NULL, NULL);
 	tmp = utf8_tocstr(pr->buffer);
 	format_add(ft, "prompt_input", "%s", tmp);
 	prompt = format_expand_time(ft, pr->string);
@@ -298,8 +319,7 @@ prompt_draw(struct prompt *pr, struct client *c, struct prompt_draw_data *pd)
 		format_add(ft, "command_prompt", "1");
 	else
 		format_add(ft, "command_prompt", "0");
-	msgfmt = options_get_string(oo, "message-format");
-	expanded = format_expand_time(ft, msgfmt);
+	expanded = format_expand_time(ft, pr->message_format);
 	free(prompt);
 
 	start = format_width(expanded);
@@ -576,9 +596,9 @@ prompt_paste(struct prompt *pr)
 	enum utf8_state		 more;
 
 	size = utf8_strlen(pr->buffer);
-	if (pr->saved != NULL) {
-		ud = pr->saved;
-		n = utf8_strlen(pr->saved);
+	if (pr->copied != NULL) {
+		ud = pr->copied;
+		n = utf8_strlen(pr->copied);
 	} else {
 		if ((pb = paste_get_top(NULL)) == NULL)
 			return (0);
@@ -622,7 +642,7 @@ prompt_paste(struct prompt *pr)
 			pr->index += n;
 		}
 	}
-	if (ud != pr->saved)
+	if (ud != pr->copied)
 		free(ud);
 	return (1);
 }
@@ -1001,10 +1021,10 @@ process_key:
 			}
 		}
 
-		free(pr->saved);
-		pr->saved = xcalloc(sizeof *pr->buffer,
+		free(pr->copied);
+		pr->copied = xcalloc(sizeof *pr->buffer,
 		    (pr->index - idx) + 1);
-		memcpy(pr->saved, pr->buffer + idx,
+		memcpy(pr->copied, pr->buffer + idx,
 		    (pr->index - idx) * sizeof *pr->buffer);
 
 		memmove(pr->buffer + idx, pr->buffer + pr->index,

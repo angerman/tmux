@@ -562,7 +562,7 @@ status_prompt_set(struct client *c, struct cmd_find_state *fs,
 		c->tty.flags |= TTY_FREEZE;
 	c->flags |= CLIENT_REDRAWSTATUS;
 
-	prompt_start(c->prompt, c);
+	prompt_incremental_start(c->prompt, c);
 
 	if ((flags & PROMPT_SINGLE) && (flags & PROMPT_ACCEPT))
 		cmdq_append(c, cmdq_get_callback(status_prompt_accept, c));
@@ -653,7 +653,7 @@ status_prompt_redraw(struct client *c)
 	pdd.menu_height = mh;
 	pdd.menu_above = options_get_number(oo, "status-position") != 0;
 	pdd.cursor_x = &sl->prompt_cx;
-	prompt_draw(c->prompt, c, &pdd);
+	prompt_draw(c->prompt, &pdd);
 
 	screen_write_stop(&ctx);
 
