@@ -284,7 +284,8 @@ prompt_draw(struct prompt *pr, struct prompt_draw_data *pd)
 	 * is drawn (which need not be on the status line) and how much room is
 	 * available above or below it; menu_x is set once start is known below.
 	 */
-	pr->menu_y = pd->menu_line;
+	pr->menu_x = pd->menu_x;
+	pr->menu_y = pd->menu_y;
 	pr->menu_height = pd->menu_height;
 	pr->menu_above = pd->menu_above;
 
@@ -326,7 +327,7 @@ prompt_draw(struct prompt *pr, struct prompt_draw_data *pd)
 	if (start > aw)
 		start = aw;
 	*cx = ax + start;
-	pr->menu_x = ax + start;
+	pr->menu_x += start;
 
 	screen_write_cursormove(ctx, ax, py, 0);
 	format_draw(ctx, &gc, aw, expanded, NULL, 0);

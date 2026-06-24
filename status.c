@@ -649,7 +649,8 @@ status_prompt_redraw(struct client *c)
 	pdd.area_x = ax;
 	pdd.area_width = aw;
 	pdd.prompt_line = promptline;
-	pdd.menu_line = my;
+	pdd.menu_x = ax;
+	pdd.menu_y = my;
 	pdd.menu_height = mh;
 	pdd.menu_above = options_get_number(oo, "status-position") != 0;
 	pdd.cursor_x = &sl->prompt_cx;

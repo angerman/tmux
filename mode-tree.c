@@ -972,6 +972,7 @@ done:
 static void
 mode_tree_draw_prompt(struct mode_tree_data *mtd, struct screen_write_ctx *ctx)
 {
+	struct window_pane	*wp = mtd->wp;
 	struct screen		*s = &mtd->screen;
 	struct prompt_draw_data	 pdd;
 	u_int			 sx = screen_size_x(s), sy = screen_size_y(s);
@@ -990,7 +991,8 @@ mode_tree_draw_prompt(struct mode_tree_data *mtd, struct screen_write_ctx *ctx)
 	pdd.area_x = 0;
 	pdd.area_width = sx;
 	pdd.prompt_line = py;
-	pdd.menu_line = py;
+	pdd.menu_x = wp->xoff;
+	pdd.menu_y = wp->yoff + py;
 	pdd.menu_height = (sy > 1) ? sy - 1 : 0;
 	pdd.menu_above = !mtd->prompt_top;
 

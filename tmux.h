@@ -2085,7 +2085,8 @@ struct prompt_draw_data {
 	u_int			 area_width;
 	u_int			 prompt_line;
 
-	u_int			 menu_line;
+	u_int			 menu_x;
+	u_int			 menu_y;
 	u_int			 menu_height;
 	int			 menu_above;
 };
