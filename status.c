@@ -29,7 +29,6 @@
 
 #include "tmux.h"
 
-static char 	*status_message_escape(const char *);
 static void	 status_message_area(struct client *, u_int *, u_int *);
 static void	 status_message_callback(int, short, void *);
 static void	 status_timer_callback(int, short, void *);
@@ -315,7 +314,7 @@ status_redraw(struct client *c)
 }
 
 /* Escape # characters in a string so format_draw treats them as literal. */
-char *
+static char *
 status_message_escape(const char *s)
 {
 	const char	*cp;
