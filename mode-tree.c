@@ -127,10 +127,21 @@ struct mode_tree_menu {
 	u_int				 line;
 };
 
+/*
+ * Wrapper around a prompt owned by a mode tree. The mode tree holds a reference
+ * while the prompt is alive; the wrapper callbacks forward to the caller's
+ * callbacks and drop that reference when the prompt is freed.
+ */
+struct mode_tree_prompt {
+	struct mode_tree_data		*mtd;
+	prompt_input_cb			 inputcb;
+	prompt_free_cb			 freecb;
+	void				*data;
+};
+
 static void	mode_tree_free_items(struct mode_tree_list *);
 static void	mode_tree_draw_help(struct mode_tree_data *,
 		    struct screen_write_ctx *);
-static void	mode_tree_free_prompt(struct mode_tree_data *);
 static void	mode_tree_draw_prompt(struct mode_tree_data *,
 		    struct screen_write_ctx *);
 
@@ -656,7 +667,7 @@ mode_tree_free(struct mode_tree_data *mtd)
 	if (mtd->zoomed == 0)
 		server_unzoom_window(wp->window);
 
-	mode_tree_free_prompt(mtd);
+	mode_tree_clear_prompt(mtd);
 	mode_tree_free_items(&mtd->children);
 	mode_tree_clear_lines(mtd);
 	screen_free(&mtd->screen);
@@ -988,8 +999,8 @@ mode_tree_draw_prompt(struct mode_tree_data *mtd, struct screen_write_ctx *ctx)
 	screen_write_cursormove(ctx, mtd->prompt_cx, py, 0);
 }
 
-static void
-mode_tree_free_prompt(struct mode_tree_data *mtd)
+void
+mode_tree_clear_prompt(struct mode_tree_data *mtd)
 {
 	if (mtd->prompt != NULL) {
 		prompt_free(mtd->prompt);
@@ -998,15 +1009,50 @@ mode_tree_free_prompt(struct mode_tree_data *mtd)
 	}
 }
 
+int
+mode_tree_has_prompt(struct mode_tree_data *mtd)
+{
+	return (mtd->prompt != NULL);
+}
+
+static enum prompt_result
+mode_tree_prompt_input_callback(struct client *c, void *data, const char *s,
+    enum prompt_key_result key)
+{
+	struct mode_tree_prompt	*mtp = data;
+
+	if (mtp->inputcb != NULL)
+		return (mtp->inputcb(c, mtp->data, s, key));
+	return (PROMPT_CLOSE);
+}
+
 static void
+mode_tree_prompt_free_callback(void *data)
+{
+	struct mode_tree_prompt	*mtp = data;
+
+	if (mtp->freecb != NULL)
+		mtp->freecb(mtp->data);
+	mode_tree_remove_ref(mtp->mtd);
+	free(mtp);
+}
+
+int
 mode_tree_set_prompt(struct mode_tree_data *mtd, struct client *c,
-    const char *prompt, const char *input, prompt_input_cb inputcb,
-    prompt_free_cb freecb)
+    const char *prompt, const char *input, enum prompt_type type, int flags,
+    prompt_input_cb inputcb, prompt_free_cb freecb, void *data)
 {
 	struct options			*oo = c->session->options;
 	struct prompt_create_data	 pd;
+	struct mode_tree_prompt		*mtp;
 
-	mode_tree_free_prompt(mtd);
+	mode_tree_clear_prompt(mtd);
+
+	mtp = xcalloc(1, sizeof *mtp);
+	mtp->mtd = mtd;
+	mtp->inputcb = inputcb;
+	mtp->freecb = freecb;
+	mtp->data = data;
 
 	mtd->references++;
 	mtd->prompt_top = options_get_number(oo, "status-position") == 0;
@@ -1014,15 +1060,16 @@ mode_tree_set_prompt(struct mode_tree_data *mtd, struct client *c,
 	memset(&pd, 0, sizeof pd);
 	pd.prompt = prompt;
 	pd.input = input;
-	pd.type = PROMPT_TYPE_SEARCH;
-	pd.flags = PROMPT_NOFORMAT|PROMPT_ISMODE;
-	pd.inputcb = inputcb;
-	pd.freecb = freecb;
-	pd.data = mtd;
+	pd.type = type;
+	pd.flags = flags | PROMPT_ISMODE;
+	pd.inputcb = mode_tree_prompt_input_callback;
+	pd.freecb = mode_tree_prompt_free_callback;
+	pd.data = mtp;
 	mtd->prompt = prompt_create(c, &pd);
 
 	mode_tree_draw(mtd);
 	mtd->wp->flags |= PANE_REDRAW;
+	return (1);
 }
 
 static struct mode_tree_item *
@@ -1168,12 +1215,6 @@ mode_tree_search_callback(__unused struct client *c, void *data, const char *s,
 	return (PROMPT_CLOSE);
 }
 
-static void
-mode_tree_search_free(void *data)
-{
-	mode_tree_remove_ref(data);
-}
-
 static enum prompt_result
 mode_tree_filter_callback(__unused struct client *c, void *data, const char *s,
     enum prompt_key_result key)
@@ -1197,12 +1238,6 @@ mode_tree_filter_callback(__unused struct client *c, void *data, const char *s,
 	if (key == PROMPT_KEY_HANDLED)
 		return (PROMPT_CONTINUE);
 	return (PROMPT_CLOSE);
-}
-
-static void
-mode_tree_filter_free(void *data)
-{
-	mode_tree_remove_ref(data);
 }
 
 static void
@@ -1369,8 +1404,15 @@ mode_tree_key(struct mode_tree_data *mtd, struct client *c, key_code *key,
 		redraw = 0;
 		prompt = mtd->prompt;
 		result = prompt_key(prompt, c, *key, &redraw);
-		if (mtd->prompt == prompt && prompt_closed(prompt))
-			mode_tree_free_prompt(mtd);
+
+		/*
+		 * Only an explicit close or the prompt marking itself closed
+		 * ends it; cursor movement and editing keep it open.
+		 */
+		if (mtd->prompt == prompt &&
+		    (result == PROMPT_KEY_CLOSE || prompt_closed(prompt)))
+			mode_tree_clear_prompt(mtd);
+
 		if (redraw || mtd->prompt != prompt) {
 			mode_tree_draw(mtd);
 			mtd->wp->flags |= PANE_REDRAW;
@@ -1585,7 +1627,8 @@ mode_tree_key(struct mode_tree_data *mtd, struct client *c, key_code *key,
 	case 's'|KEYC_CTRL:
 		mtd->search_dir = MODE_TREE_SEARCH_FORWARD;
 		mode_tree_set_prompt(mtd, c, "(search) ", "",
-		    mode_tree_search_callback, mode_tree_search_free);
+		    PROMPT_TYPE_SEARCH, PROMPT_NOFORMAT,
+		    mode_tree_search_callback, NULL, mtd);
 		break;
 	case 'n':
 		mtd->search_dir = MODE_TREE_SEARCH_FORWARD;
@@ -1597,10 +1640,11 @@ mode_tree_key(struct mode_tree_data *mtd, struct client *c, key_code *key,
 		break;
 	case 'f':
 		mode_tree_set_prompt(mtd, c, "(filter) ", mtd->filter,
-		    mode_tree_filter_callback, mode_tree_filter_free);
+		    PROMPT_TYPE_SEARCH, PROMPT_NOFORMAT,
+		    mode_tree_filter_callback, NULL, mtd);
 		break;
 	case 'c':
-		mode_tree_free_prompt(mtd);
+		mode_tree_clear_prompt(mtd);
 		mode_tree_clear_filter(mtd);
 		break;
 	case 'v':

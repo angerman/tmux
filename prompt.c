@@ -926,6 +926,8 @@ process_key:
 	result = prompt_check_move(pr, c, key);
 	if (result != PROMPT_KEY_NOT_HANDLED)
 		return (result);
+	result = PROMPT_KEY_HANDLED;
+
 	switch (key) {
 	case KEYC_LEFT:
 	case 'b'|KEYC_CTRL:
