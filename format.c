@@ -4536,9 +4536,11 @@ format_match(struct format_modifier *fm, const char *pattern, const char *text)
 	if (fm->argc >= 1)
 		s = fm->argv[0];
 	if (strchr(s, 'z') != NULL) {
+#if 0
 		if (!fuzzy_match(pattern, text, strchr(s, 'i') != NULL, NULL,
 		    NULL, NULL))
 			return (xstrdup("0"));
+#endif
 	} else if (strchr(s, 'r') == NULL) {
 		if (strchr(s, 'i') != NULL)
 			flags |= FNM_CASEFOLD;

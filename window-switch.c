@@ -63,6 +63,7 @@ struct window_switch_itemdata {
 
 	uint64_t		 tag;
 	char			*text;
+	bitstr_t		*match;
 
 	int			 score;
 	u_int			 order;
@@ -89,6 +90,7 @@ struct window_switch_modedata {
 static void
 window_switch_free_item(struct window_switch_itemdata *item)
 {
+	free(item->match);
 	free(item->text);
 	free(item);
 }
@@ -169,6 +171,7 @@ window_switch_build(struct window_switch_modedata *data)
 	struct window_switch_itemdata	 *item, **m = NULL;
 	const char			 *f = data->filter;
 	u_int				  ns, nw, i, n = 0, order = 0, *p, np;
+	u_int				  sx = screen_size_x(&data->screen);
 	struct session			**sl;
 	struct winlink			**wl;
 	struct sort_criteria		  sort_crit;
@@ -203,7 +206,8 @@ window_switch_build(struct window_switch_modedata *data)
 			continue;
 		}
 
-		if (!fuzzy_match(f, item->text, 1, &item->score, NULL, NULL))
+		item->match = fuzzy_match(f, item->text, sx, &item->score);
+		if (item->match == NULL)
 			continue;
 		m = xreallocarray(m, n + 1, sizeof *m);
 		m[n++] = item;
@@ -223,12 +227,13 @@ window_switch_draw_screen(struct window_mode_entry *wme)
 	struct options			*oo = wp->options;
 	struct screen_write_ctx		 ctx;
 	struct screen			*s = &data->screen;
-	u_int				 sx = screen_size_x(s), i, width;
+	u_int				 sx = screen_size_x(s), i, j, width;
 	u_int				 sy = screen_size_y(s);
 	struct window_switch_itemdata	*item;
 	struct format_tree		*ft;
 	const char			*format;
 	char				*expanded;
+	struct grid_cell		 mgc, gc;
 
 	screen_write_start(&ctx, s);
 	screen_write_clearscreen(&ctx, 8);
@@ -238,6 +243,8 @@ window_switch_draw_screen(struct window_mode_entry *wme)
 		return;
 	}
 
+	style_apply(&mgc, oo, "switch-mode-match-style", NULL);
+
 	for (i = 0; i < data->matches_size; i++) {
 		if (i == sy - 1)
 			break;
@@ -245,6 +252,19 @@ window_switch_draw_screen(struct window_mode_entry *wme)
 
 		screen_write_cursormove(&ctx, 0, i, 0);
 		format_draw(&ctx, &grid_default_cell, sx, item->text, NULL, 0);
+
+		if (item->match == NULL)
+			continue;
+		for (j = 0; j < sx; j++) {
+			if (!bit_test(item->match, j))
+				continue;
+			grid_get_cell(s->grid, j, i, &gc);
+			gc.attr = mgc.attr;
+			gc.fg = mgc.fg;
+			gc.bg = mgc.bg;
+			screen_write_cursormove(&ctx, j, i, 0);
+			screen_write_cell(&ctx, &gc);
+		}
 	}
 
 	ft = format_create(NULL, NULL, FORMAT_NONE, 0);

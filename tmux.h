@@ -3216,8 +3216,7 @@ const char *attributes_tostring(int);
 int	 attributes_fromstring(const char *);
 
 /* fuzzy.c */
-int		 fuzzy_match(const char *, const char *, int, int *, u_int *,
-		     u_int *);
+bitstr_t	*fuzzy_match(const char *, const char *, u_int, u_int *);
 
 /* grid.c */
 extern const struct grid_cell grid_default_cell;
