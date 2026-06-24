@@ -6456,13 +6456,36 @@ An optional argument specifies flags:
 .Ql r
 means the pattern is a regular expression instead of the default
 .Xr glob 7
-pattern and
+pattern;
 .Ql i
-means to ignore case.
+means to ignore case;
+.Ql z
+means to do a fuzzy match;
+.Ql p
+is like
+.Ql z
+but returns a list of matched positions.
+A fuzzy match matches plain terms as sequences where each character must appear
+in order but not necessarily consecutively; terms beginning with
+.Ql '
+are exact substring matches,
+.Ql ^
+anchors a term at the start,
+.Ql $
+anchors it at the end,
+.Ql !
+inverts a term and
+.Ql |
+separates alternative groups.
 For example:
 .Ql #{m:*foo*,#{host}}
 or
-.Ql #{m/ri:\[ha]A,MYVAR} .
+.Ql #{m/ri:\[ha]A,MYVAR}
+or
+.Ql #{m/z:dev bash,dev:1 bash}
+or
+.Ql #{m/z:^dev | ^prod,prod:1 ssh} .
+.Pp
 A
 .Ql C
 performs a search for a
