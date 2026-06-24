@@ -168,9 +168,9 @@ prompt_update(struct prompt *pr, struct client *c, const char *msg,
 	char			*tmp;
 
 	if (cmd_find_valid_state(&pr->state))
- 		ft = format_create_from_state(NULL, c, &pr->state);
+		ft = format_create_from_state(NULL, c, &pr->state);
 	else
- 		ft = format_create_defaults(NULL, c, NULL, NULL, NULL);
+		ft = format_create_defaults(NULL, c, NULL, NULL, NULL);
 
 	free(pr->string);
 	pr->string = xstrdup(msg);
@@ -247,7 +247,7 @@ prompt_redraw_quote(const struct prompt *pr, u_int pcursor,
 void
 prompt_draw(struct prompt *pr, struct client *c, struct prompt_draw_data *pd)
 {
-	struct options 		*oo = c->session->options;
+	struct options		*oo = c->session->options;
 	struct screen_write_ctx	*ctx = pd->ctx;
 	struct screen		*s = ctx->s;
 	u_int			 ax = pd->area_x, py = pd->prompt_line;
@@ -282,9 +282,9 @@ prompt_draw(struct prompt *pr, struct client *c, struct prompt_draw_data *pd)
 
 	/* Expand the prompt itself. */
 	if (cmd_find_valid_state(&pr->state))
- 		ft = format_create_from_state(NULL, c, &pr->state);
+		ft = format_create_from_state(NULL, c, &pr->state);
 	else
- 		ft = format_create_defaults(NULL, c, NULL, NULL, NULL);
+		ft = format_create_defaults(NULL, c, NULL, NULL, NULL);
 	tmp = utf8_tocstr(pr->buffer);
 	format_add(ft, "prompt_input", "%s", tmp);
 	prompt = format_expand_time(ft, pr->string);
