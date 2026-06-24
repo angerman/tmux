@@ -80,7 +80,6 @@ prompt_create(struct client *c, const struct prompt_create_data *pd)
 
 	if (input == NULL)
 		input = "";
-
 	pr->string = xstrdup(pd->prompt);
 	if (pd->flags & PROMPT_NOFORMAT)
 		tmp = xstrdup(input);
@@ -1261,8 +1260,12 @@ prompt_menu_callback(__unused struct menu *menu, u_int idx, key_code key,
 
 	if (key != KEYC_NONE) {
 		idx += pm->start;
-		if (prompt_replace_complete(pr, c, pm->list[idx]))
-			c->flags |= CLIENT_REDRAWSTATUS;
+		if (prompt_replace_complete(pr, c, pm->list[idx])) {
+			if (pm->pr->flags & PROMPT_ISMODE)
+				c->flags |= CLIENT_REDRAWWINDOW;
+			else
+				c->flags |= CLIENT_REDRAWSTATUS;
+		}
 	}
 
 	for (i = 0; i < pm->size; i++)
