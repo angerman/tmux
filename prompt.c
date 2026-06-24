@@ -61,13 +61,6 @@ static void		 prompt_add_history(const char *, u_int);
 static char		*prompt_complete(struct prompt *, struct client *,
 			     const char *, u_int);
 
-static const char *prompt_type_strings[] = {
-	"command",
-	"search",
-	"target",
-	"window-target"
-};
-
 /* Status prompt history. */
 static char	**prompt_hlist[PROMPT_NTYPES];
 static u_int	  prompt_hsize[PROMPT_NTYPES];
@@ -177,7 +170,7 @@ prompt_save_history(void)
 
 	for (type = 0; type < PROMPT_NTYPES; type++) {
 		for (i = 0; i < prompt_hsize[type]; i++) {
-			fputs(prompt_type_strings[type], f);
+			fputs(prompt_type_string(type), f);
 			fputc(':', f);
 			fputs(prompt_hlist[type][i], f);
 			fputc('\n', f);
@@ -1587,9 +1580,15 @@ prompt_type(const char *type)
 const char *
 prompt_type_string(enum prompt_type type)
 {
-	if (type >= PROMPT_NTYPES)
+	switch (type) {
+	case PROMPT_TYPE_COMMAND:
+		return ("command");
+	case PROMPT_TYPE_SEARCH:
+		return ("search");
+	case PROMPT_TYPE_INVALID:
 		return ("invalid");
-	return (prompt_type_strings[type]);
+	}
+	return ("unknown");
 }
 
 /* Get history size. */
