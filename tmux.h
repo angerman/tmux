@@ -2071,6 +2071,18 @@ struct prompt_create_data {
 	prompt_free_cb		 freecb;
 	void			*data;
 };
+struct prompt_draw_data {
+	struct screen_write_ctx	*ctx;
+	u_int			*cursor_x;
+
+	u_int			 area_x;
+	u_int			 area_width;
+	u_int			 prompt_line;
+
+	u_int			 menu_line;
+	u_int			 menu_height;
+	int			 menu_above;
+};
 typedef struct visible_ranges *(*overlay_check_cb)(struct client *, void *,
     u_int, u_int, u_int);
 typedef struct screen *(*overlay_mode_cb)(struct client *, void *, u_int *,
@@ -3171,8 +3183,7 @@ void	 prompt_free(struct prompt *);
 void	 prompt_start(struct prompt *, struct client *);
 void	 prompt_accept(struct prompt *, struct client *, const char *);
 void	 prompt_draw(struct prompt *, struct client *,
-	     struct screen_write_ctx *, u_int, u_int, u_int, u_int *);
-void	 prompt_set_menu(struct prompt *, u_int, u_int, int);
+	     struct prompt_draw_data *);
 enum prompt_key_result prompt_key(struct prompt *, struct client *, key_code,
     int *);
 void	 prompt_update(struct prompt *, struct client *, const char *,

@@ -231,17 +231,28 @@ prompt_redraw_quote(const struct prompt *pr, u_int pcursor,
 
 /* Draw prompt. */
 void
-prompt_draw(struct prompt *pr, struct client *c, struct screen_write_ctx *ctx,
-    u_int ax, u_int py, u_int aw, u_int *cx)
+prompt_draw(struct prompt *pr, struct client *c, struct prompt_draw_data *pd)
 {
 	struct options 		*oo = c->session->options;
+	struct screen_write_ctx	*ctx = pd->ctx;
 	struct screen		*s = ctx->s;
+	u_int			 ax = pd->area_x, py = pd->prompt_line;
+	u_int			 aw = pd->area_width, *cx = pd->cursor_x;
 	struct format_tree	*ft;
 	struct grid_cell	 gc;
 	u_int			 i, offset, left, start, width, n;
 	u_int			 pcursor, pwidth;
 	const char		*msgfmt;
 	char			*expanded, *prompt, *tmp;
+
+	/*
+	 * Seed the completion menu geometry. The caller knows where the prompt
+	 * is drawn (which need not be on the status line) and how much room is
+	 * available above or below it; menu_x is set once start is known below.
+	 */
+	pr->menu_y = pd->menu_line;
+	pr->menu_height = pd->menu_height;
+	pr->menu_above = pd->menu_above;
 
 	/* Choose the cursor colour and style for this prompt. */
 	n = options_get_number(oo, "prompt-cursor-colour");
@@ -322,19 +333,6 @@ prompt_draw(struct prompt *pr, struct client *c, struct screen_write_ctx *ctx,
 			break;
 	}
 	prompt_redraw_quote(pr, pcursor, ctx, offset, pwidth, &width, &gc);
-}
-
-/*
- * Set the position used to place the completion menu. The caller knows where
- * the prompt is drawn (which need not be on the status line) and how much room
- * is available above or below it.
- */
-void
-prompt_set_menu(struct prompt *pr, u_int y, u_int height, int above)
-{
-	pr->menu_y = y;
-	pr->menu_height = height;
-	pr->menu_above = above;
 }
 
 /* Is this a separator? */

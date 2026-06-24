@@ -616,8 +616,10 @@ int
 status_prompt_redraw(struct client *c)
 {
 	struct status_line	*sl = &c->status;
+	struct options		*oo = c->session->options;
 	struct screen_write_ctx	 ctx;
 	struct screen		 old_screen;
+	struct prompt_draw_data	 pdd;
 	u_int			 lines, slines = status_line_size(c), ax, aw;
 	u_int			 my = status_prompt_screen_line(c), promptline;
 	u_int			 mh;
@@ -641,14 +643,20 @@ status_prompt_redraw(struct client *c)
 		mh = c->tty.sy - slines - 2;
 	else
 		mh = 0;
-	if (options_get_number(c->session->options, "status-position") != 0)
-		prompt_set_menu(c->prompt, my, mh, 1);
-	else
-		prompt_set_menu(c->prompt, my, mh, 0);
 
 	screen_write_start(&ctx, sl->active);
 	screen_write_fast_copy(&ctx, &sl->screen, 0, 0, c->tty.sx, lines);
-	prompt_draw(c->prompt, c, &ctx, ax, promptline, aw, &sl->prompt_cx);
+
+	pdd.ctx = &ctx;
+	pdd.area_x = ax;
+	pdd.area_width = aw;
+	pdd.prompt_line = promptline;
+	pdd.menu_line = my;
+	pdd.menu_height = mh;
+	pdd.menu_above = options_get_number(oo, "status-position") != 0;
+	pdd.cursor_x = &sl->prompt_cx;
+	prompt_draw(c->prompt, c, &pdd);
+
 	screen_write_stop(&ctx);
 
 	if (grid_compare(sl->active->grid, old_screen.grid) == 0) {
