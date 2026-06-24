@@ -3179,6 +3179,11 @@ int	 prompt_closed(struct prompt *);
 int	 prompt_is_inputcb(struct prompt *, prompt_input_cb);
 enum prompt_type prompt_type(const char *);
 const char *prompt_type_string(enum prompt_type);
+
+/* prompt-history.c */
+const char *prompt_up_history(u_int *, u_int);
+const char *prompt_down_history(u_int *, u_int);
+void	 prompt_add_history(const char *, u_int);
 u_int	 prompt_history_size(enum prompt_type);
 const char *prompt_history_get(enum prompt_type, u_int);
 void	 prompt_history_clear(enum prompt_type);
