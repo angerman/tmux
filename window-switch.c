@@ -154,9 +154,9 @@ window_switch_compare(const void *a0, const void *b0)
 	struct window_switch_itemdata	*const *a = a0;
 	struct window_switch_itemdata	*const *b = b0;
 
-	if ((*a)->score < (*b)->score)
-		return (-1);
 	if ((*a)->score > (*b)->score)
+		return (-1);
+	if ((*a)->score < (*b)->score)
 		return (1);
 	if ((*a)->order < (*b)->order)
 		return (-1);
