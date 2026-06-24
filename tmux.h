@@ -2047,7 +2047,11 @@ enum prompt_key_result {
 };
 
 /* Prompt callbacks. */
-typedef enum prompt_result (*prompt_input_cb)(struct client *, void *,
+typedef enum prompt_result (*prompt_input_cb)(void *, const char *,
+    enum prompt_key_result);
+typedef enum prompt_result (*status_prompt_input_cb)(struct client *, void *,
+    const char *, enum prompt_key_result);
+typedef enum prompt_result (*mode_tree_prompt_input_cb)(struct client *, void *,
     const char *, enum prompt_key_result);
 typedef void (*prompt_free_cb)(void *);
 
@@ -3191,7 +3195,7 @@ void printflike(6, 7) status_message_set(struct client *, int, int, int, int,
 void	 status_message_clear(struct client *);
 int	 status_message_redraw(struct client *);
 void	 status_prompt_set(struct client *, struct cmd_find_state *,
-	     const char *, const char *, prompt_input_cb, prompt_free_cb,
+	     const char *, const char *, status_prompt_input_cb, prompt_free_cb,
 	     void *, int, enum prompt_type);
 void	 status_prompt_clear(struct client *);
 int	 status_prompt_redraw(struct client *);
@@ -3203,7 +3207,7 @@ void	 status_prompt_update(struct client *, const char *, const char *);
 void	 prompt_set_options(struct prompt_create_data *, struct session *);
 struct prompt *prompt_create(const struct prompt_create_data *);
 void	 prompt_free(struct prompt *);
-void	 prompt_incremental_start(struct prompt *, struct client *);
+void	 prompt_incremental_start(struct prompt *);
 void	 prompt_draw(struct prompt *, struct prompt_draw_data *);
 enum prompt_key_result prompt_key(struct prompt *, struct client *, key_code,
     int *);
@@ -3712,7 +3716,7 @@ int	 mode_tree_key(struct mode_tree_data *, struct client *, key_code *,
 	     struct mouse_event *, u_int *, u_int *);
 void	 mode_tree_set_prompt(struct mode_tree_data *, struct client *,
 	     const char *, const char *, enum prompt_type, int,
-	     prompt_input_cb, prompt_free_cb, void *);
+	     mode_tree_prompt_input_cb, prompt_free_cb, void *);
 void	 mode_tree_clear_prompt(struct mode_tree_data *);
 int	 mode_tree_has_prompt(struct mode_tree_data *);
 void	 mode_tree_run_command(struct client *, struct cmd_find_state *,

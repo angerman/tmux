@@ -37,6 +37,7 @@ enum mode_tree_preview {
 };
 
 struct mode_tree_item;
+struct mode_tree_prompt;
 TAILQ_HEAD(mode_tree_list, mode_tree_item);
 
 struct mode_tree_data {
@@ -78,6 +79,7 @@ struct mode_tree_data {
 
 	struct screen		  screen;
 	struct prompt		 *prompt;
+	struct mode_tree_prompt	 *prompt_data;
 	u_int			  prompt_cx;
 	u_int			  prompt_menu_oy;
 	int			  prompt_top;
@@ -135,7 +137,8 @@ struct mode_tree_menu {
  */
 struct mode_tree_prompt {
 	struct mode_tree_data		*mtd;
-	prompt_input_cb			 inputcb;
+	struct client			*c;
+	mode_tree_prompt_input_cb	 inputcb;
 	prompt_free_cb			 freecb;
 	void				*data;
 };
@@ -1005,9 +1008,11 @@ mode_tree_draw_prompt(struct mode_tree_data *mtd, struct screen_write_ctx *ctx)
 void
 mode_tree_clear_prompt(struct mode_tree_data *mtd)
 {
+	struct prompt	*prompt = mtd->prompt;
+
 	if (mtd->prompt != NULL) {
 		mtd->prompt = NULL;
-		prompt_free(mtd->prompt);
+		prompt_free(prompt);
 		mtd->screen.mode &= ~MODE_CURSOR;
 	}
 }
@@ -1019,13 +1024,13 @@ mode_tree_has_prompt(struct mode_tree_data *mtd)
 }
 
 static enum prompt_result
-mode_tree_prompt_input_callback(struct client *c, void *data, const char *s,
+mode_tree_prompt_input_callback(void *data, const char *s,
     enum prompt_key_result key)
 {
 	struct mode_tree_prompt	*mtp = data;
 
 	if (mtp->inputcb != NULL)
-		return (mtp->inputcb(c, mtp->data, s, key));
+		return (mtp->inputcb(mtp->c, mtp->data, s, key));
 	return (PROMPT_CLOSE);
 }
 
@@ -1034,6 +1039,8 @@ mode_tree_prompt_free_callback(void *data)
 {
 	struct mode_tree_prompt	*mtp = data;
 
+	if (mtp->mtd->prompt_data == mtp)
+		mtp->mtd->prompt_data = NULL;
 	if (mtp->freecb != NULL)
 		mtp->freecb(mtp->data);
 	mode_tree_remove_ref(mtp->mtd);
@@ -1043,7 +1050,7 @@ mode_tree_prompt_free_callback(void *data)
 void
 mode_tree_set_prompt(struct mode_tree_data *mtd, struct client *c,
     const char *prompt, const char *input, enum prompt_type type, int flags,
-    prompt_input_cb inputcb, prompt_free_cb freecb, void *data)
+    mode_tree_prompt_input_cb inputcb, prompt_free_cb freecb, void *data)
 {
 	struct session			*s;
 	struct options			*oo;
@@ -1082,6 +1089,7 @@ mode_tree_set_prompt(struct mode_tree_data *mtd, struct client *c,
 	pd.freecb = mode_tree_prompt_free_callback;
 	pd.data = mtp;
 	mtd->prompt = prompt_create(&pd);
+	mtd->prompt_data = mtp;
 
 	mode_tree_draw(mtd);
 	mtd->wp->flags |= PANE_REDRAW;
@@ -1409,6 +1417,7 @@ mode_tree_key(struct mode_tree_data *mtd, struct client *c, key_code *key,
 	enum prompt_key_result	 result;
 	int			 redraw;
 	struct prompt		*prompt;
+	struct mode_tree_prompt	*mtp;
 
 	if (mtd->line_size == 0) {
 		*key = KEYC_NONE;
@@ -1418,7 +1427,12 @@ mode_tree_key(struct mode_tree_data *mtd, struct client *c, key_code *key,
 	if (mtd->prompt != NULL) {
 		redraw = 0;
 		prompt = mtd->prompt;
+		mtp = mtd->prompt_data;
+		if (mtp != NULL)
+			mtp->c = c;
 		result = prompt_key(prompt, c, *key, &redraw);
+		if (mtd->prompt_data == mtp && mtp != NULL)
+			mtp->c = NULL;
 
 		/*
 		 * Only an explicit close or the prompt marking itself closed

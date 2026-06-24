@@ -177,16 +177,12 @@ prompt_free(struct prompt *pr)
  * still open.
  */
 static int
-prompt_fire_callback(struct prompt *pr, struct client *c, const char *s,
+prompt_fire_callback(struct prompt *pr, const char *s,
     enum prompt_key_result type, int *redraw)
 {
 	enum prompt_result	result;
 
-	result = pr->inputcb(c, pr->data, s, type);
-	if (c != NULL &&
-	    (~pr->flags & PROMPT_ISMODE) &&
-	    c->prompt != pr)
-		return (1);
+	result = pr->inputcb(pr->data, s, type);
 	if (result == PROMPT_CLOSE) {
 		pr->closed = 1;
 		return (1);
@@ -198,14 +194,14 @@ prompt_fire_callback(struct prompt *pr, struct client *c, const char *s,
 
 /* Start incremental prompt. */
 void
-prompt_incremental_start(struct prompt *pr, struct client *c)
+prompt_incremental_start(struct prompt *pr)
 {
 	char	*tmp, *cp;
 
 	if (pr->flags & PROMPT_INCREMENTAL) {
 		tmp = utf8_tocstr(pr->buffer);
 		xasprintf(&cp, "=%s", tmp);
-		prompt_fire_callback(pr, c, cp, PROMPT_KEY_HANDLED, NULL);
+		prompt_fire_callback(pr, cp, PROMPT_KEY_HANDLED, NULL);
 		free(cp);
 		free(tmp);
 	}
@@ -863,16 +859,16 @@ prompt_backward_word(struct prompt *pr, const char *separators)
 
 /* Fire input callback when done. */
 static enum prompt_key_result
-prompt_done(struct prompt *pr, struct client *c, const char *s, int *redraw)
+prompt_done(struct prompt *pr, const char *s, int *redraw)
 {
-	if (prompt_fire_callback(pr, c, s, PROMPT_KEY_CLOSE, redraw))
+	if (prompt_fire_callback(pr, s, PROMPT_KEY_CLOSE, redraw))
 		return (PROMPT_KEY_CLOSE);
 	return (PROMPT_KEY_HANDLED);
 }
 
 /* Check for a movement key. */
 static enum prompt_key_result
-prompt_check_move(struct prompt *pr, struct client *c, key_code key)
+prompt_check_move(struct prompt *pr, key_code key)
 {
 	char	*s;
 
@@ -890,7 +886,7 @@ prompt_check_move(struct prompt *pr, struct client *c, key_code key)
 		return (PROMPT_KEY_NOT_HANDLED);
 	}
 	s = utf8_tocstr(pr->buffer);
-	if (prompt_fire_callback(pr, c, s, PROMPT_KEY_MOVE, NULL)) {
+	if (prompt_fire_callback(pr, s, PROMPT_KEY_MOVE, NULL)) {
 		free(s);
 		return (PROMPT_KEY_CLOSE);
 	}
@@ -912,7 +908,7 @@ prompt_key(struct prompt *pr, struct client *c, key_code key, int *redraw)
 	pr->closed = 0;
 	if (pr->flags & PROMPT_KEY) {
 		ks = key_string_lookup_key(key, 0);
-		if (!prompt_fire_callback(pr, c, ks, PROMPT_KEY_CLOSE, NULL))
+		if (!prompt_fire_callback(pr, ks, PROMPT_KEY_CLOSE, NULL))
 			pr->closed = 1;
 		return (PROMPT_KEY_CLOSE);
 	}
@@ -925,7 +921,7 @@ prompt_key(struct prompt *pr, struct client *c, key_code key, int *redraw)
 		if (key >= '0' && key <= '9')
 			goto append_key;
 		s = utf8_tocstr(pr->buffer);
-		if (!prompt_fire_callback(pr, c, s, PROMPT_KEY_CLOSE, NULL))
+		if (!prompt_fire_callback(pr, s, PROMPT_KEY_CLOSE, NULL))
 			pr->closed = 1;
 		free(s);
 		return (PROMPT_KEY_NOT_HANDLED);
@@ -956,7 +952,7 @@ prompt_key(struct prompt *pr, struct client *c, key_code key, int *redraw)
 	}
 
 process_key:
-	result = prompt_check_move(pr, c, key);
+	result = prompt_check_move(pr, key);
 	if (result != PROMPT_KEY_NOT_HANDLED)
 		return (result);
 	result = PROMPT_KEY_HANDLED;
@@ -997,7 +993,7 @@ process_key:
 	case KEYC_BSPACE:
 	case 'h'|KEYC_CTRL:
 		if (pr->flags & PROMPT_BSPACE_EXIT && size == 0)
-			return (prompt_done(pr, c, NULL, redraw));
+			return (prompt_done(pr, NULL, redraw));
 		if (pr->index != 0) {
 			if (pr->index == size)
 				pr->buffer[--pr->index].size = 0;
@@ -1130,14 +1126,14 @@ process_key:
 		s = utf8_tocstr(pr->buffer);
 		if (*s != '\0')
 			prompt_add_history(s, pr->type);
-		result = prompt_done(pr, c, s, redraw);
+		result = prompt_done(pr, s, redraw);
 		free(s);
 		return (result);
 	case '\033': /* Escape */
 	case '['|KEYC_CTRL:
 	case 'c'|KEYC_CTRL:
 	case 'g'|KEYC_CTRL:
-		return (prompt_done(pr, c, NULL, redraw));
+		return (prompt_done(pr, NULL, redraw));
 	case 'r'|KEYC_CTRL:
 		if (~pr->flags & PROMPT_INCREMENTAL)
 			break;
@@ -1202,7 +1198,7 @@ append_key:
 			result = PROMPT_KEY_CLOSE;
 		} else {
 			s = utf8_tocstr(pr->buffer);
-			result = prompt_done(pr, c, s, redraw);
+			result = prompt_done(pr, s, redraw);
 			free(s);
 		}
 	}
@@ -1212,7 +1208,7 @@ changed:
 	if (pr->flags & PROMPT_INCREMENTAL) {
 		s = utf8_tocstr(pr->buffer);
 		xasprintf(&cp, "%c%s", prefix, s);
-		prompt_fire_callback(pr, c, cp, PROMPT_KEY_HANDLED, NULL);
+		prompt_fire_callback(pr, cp, PROMPT_KEY_HANDLED, NULL);
 		free(cp);
 		free(s);
 	}

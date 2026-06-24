@@ -523,6 +523,40 @@ status_message_redraw(struct client *c)
 	return (1);
 }
 
+
+struct status_prompt_data {
+	struct client		*c;
+	status_prompt_input_cb	 inputcb;
+	prompt_free_cb		 freecb;
+	void			*data;
+};
+
+static enum prompt_result
+status_prompt_input_callback(void *data, const char *s,
+    enum prompt_key_result key)
+{
+	struct status_prompt_data	*spd = data;
+	struct client			*c = spd->c;
+	status_prompt_input_cb		 inputcb = spd->inputcb;
+	void				*arg = spd->data;
+
+	if (inputcb != NULL)
+		return (inputcb(c, arg, s, key));
+	return (PROMPT_CLOSE);
+}
+
+static void
+status_prompt_free_callback(void *data)
+{
+	struct status_prompt_data	*spd = data;
+	prompt_free_cb			 freecb = spd->freecb;
+	void				*arg = spd->data;
+
+	if (freecb != NULL)
+		freecb(arg);
+	free(spd);
+}
+
 /* Accept prompt immediately. */
 static enum cmd_retval
 status_prompt_accept(__unused struct cmdq_item *item, void *data)
@@ -537,16 +571,23 @@ status_prompt_accept(__unused struct cmdq_item *item, void *data)
 /* Enable status line prompt. */
 void
 status_prompt_set(struct client *c, struct cmd_find_state *fs,
-    const char *msg, const char *input, prompt_input_cb inputcb,
+    const char *msg, const char *input, status_prompt_input_cb inputcb,
     prompt_free_cb freecb, void *data, int flags, enum prompt_type prompt_type)
 {
 	struct prompt_create_data	pd;
+	struct status_prompt_data	*spd;
 
 	server_client_clear_overlay(c);
 
 	status_message_clear(c);
 	status_prompt_clear(c);
 	status_push_screen(c);
+
+	spd = xcalloc(1, sizeof *spd);
+	spd->c = c;
+	spd->inputcb = inputcb;
+	spd->freecb = freecb;
+	spd->data = data;
 
 	memset(&pd, 0, sizeof pd);
 	prompt_set_options(&pd, c->session);
@@ -555,16 +596,16 @@ status_prompt_set(struct client *c, struct cmd_find_state *fs,
 	pd.input = input;
 	pd.type = prompt_type;
 	pd.flags = flags;
-	pd.inputcb = inputcb;
-	pd.freecb = freecb;
-	pd.data = data;
+	pd.inputcb = status_prompt_input_callback;
+	pd.freecb = status_prompt_free_callback;
+	pd.data = spd;
 	c->prompt = prompt_create(&pd);
 
 	if ((~flags & PROMPT_INCREMENTAL) && (~flags & PROMPT_NOFREEZE))
 		c->tty.flags |= TTY_FREEZE;
 	c->flags |= CLIENT_REDRAWSTATUS;
 
-	prompt_incremental_start(c->prompt, c);
+	prompt_incremental_start(c->prompt);
 
 	if ((flags & PROMPT_SINGLE) && (flags & PROMPT_ACCEPT))
 		cmdq_append(c, cmdq_get_callback(status_prompt_accept, c));
