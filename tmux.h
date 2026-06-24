@@ -2024,7 +2024,7 @@ RB_HEAD(client_windows, client_window);
 #define CLIENT_PASTE_TIME_LIMIT 5
 
 /* Prompt type. */
-#define PROMPT_NTYPES 4
+#define PROMPT_NTYPES 2
 enum prompt_type {
 	PROMPT_TYPE_COMMAND,
 	PROMPT_TYPE_SEARCH,

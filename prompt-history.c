@@ -236,6 +236,8 @@ prompt_history_get(enum prompt_type type, u_int idx)
 {
 	if (type >= PROMPT_NTYPES)
 		return (NULL);
+	if (idx >= prompt_hsize[type])
+		return (NULL);
 	return (prompt_hlist[type][idx]);
 }
 
@@ -249,6 +251,7 @@ prompt_history_clear(enum prompt_type type)
 		return;
 	for (idx = 0; idx < prompt_hsize[type]; idx++)
 		free(prompt_hlist[type][idx]);
+	free(prompt_hlist[type]);
 	prompt_hlist[type] = NULL;
 	prompt_hsize[type] = 0;
 }

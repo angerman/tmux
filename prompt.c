@@ -1242,20 +1242,20 @@ static void
 prompt_menu_callback(__unused struct menu *menu, u_int idx, key_code key,
     void *data)
 {
-	struct prompt_menu	*spm = data;
-	struct prompt		*pr = spm->pr;
-	struct client		*c = spm->c;
+	struct prompt_menu	*pm = data;
+	struct prompt		*pr = pm->pr;
+	struct client		*c = pm->c;
 	u_int			 i;
 
 	if (key != KEYC_NONE) {
-		idx += spm->start;
-		if (prompt_replace_complete(pr, c, spm->list[idx]))
+		idx += pm->start;
+		if (prompt_replace_complete(pr, c, pm->list[idx]))
 			c->flags |= CLIENT_REDRAWSTATUS;
 	}
 
-	for (i = 0; i < spm->size; i++)
-		free(spm->list[i]);
-	free(spm->list);
+	for (i = 0; i < pm->size; i++)
+		free(pm->list[i]);
+	free(pm->list);
 }
 
 /* Show complete word menu. */
@@ -1265,7 +1265,7 @@ prompt_complete_list_menu(struct prompt *pr, struct client *c, char **list,
 {
 	struct menu		*menu;
 	struct menu_item	 item;
-	struct prompt_menu	*spm;
+	struct prompt_menu	*pm;
 	u_int			 lines = status_line_size(c), height, i, py;
 
 	if (size <= 1)
@@ -1273,23 +1273,23 @@ prompt_complete_list_menu(struct prompt *pr, struct client *c, char **list,
 	if (c->tty.sy - lines < 3)
 		return (0);
 
-	spm = xmalloc(sizeof *spm);
-	spm->c = c;
-	spm->pr = pr;
-	spm->size = size;
-	spm->list = list;
+	pm = xmalloc(sizeof *pm);
+	pm->c = c;
+	pm->pr = pr;
+	pm->size = size;
+	pm->list = list;
 
 	height = c->tty.sy - lines - 2;
 	if (height > 10)
 		height = 10;
 	if (height > size)
 		height = size;
-	spm->start = size - height;
+	pm->start = size - height;
 
 	menu = menu_create("");
-	for (i = spm->start; i < size; i++) {
+	for (i = pm->start; i < size; i++) {
 		item.name = list[i];
-		item.key = '0' + (i - spm->start);
+		item.key = '0' + (i - pm->start);
 		item.command = NULL;
 		menu_add_item(menu, &item, NULL, c, NULL);
 	}
@@ -1307,9 +1307,9 @@ prompt_complete_list_menu(struct prompt *pr, struct client *c, char **list,
 
 	if (menu_display(menu, MENU_NOMOUSE|MENU_TAB, 0, NULL, offset, py, c,
 	    BOX_LINES_DEFAULT, NULL, NULL, NULL, NULL,
-	    prompt_menu_callback, spm) != 0) {
+	    prompt_menu_callback, pm) != 0) {
 		menu_free(menu);
-		free(spm);
+		free(pm);
 		return (0);
 	}
 	return (1);
