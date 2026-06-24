@@ -63,6 +63,7 @@ struct mouse_event;
 struct options;
 struct options_array_item;
 struct options_entry;
+struct prompt;
 struct redraw_scene;
 struct redraw_span;
 struct screen_write_citem;
@@ -2045,10 +2046,12 @@ enum prompt_key_result {
 	PROMPT_KEY_MOVE
 };
 
+/* Prompt callbacks. */
 typedef enum prompt_result (*prompt_input_cb)(struct client *, void *,
     const char *, enum prompt_key_result);
 typedef void (*prompt_free_cb)(void *);
 
+/* Prompt flags. */
 #define PROMPT_SINGLE 0x1
 #define PROMPT_NUMERIC 0x2
 #define PROMPT_INCREMENTAL 0x4
@@ -2060,7 +2063,7 @@ typedef void (*prompt_free_cb)(void *);
 #define PROMPT_NOFREEZE 0x100
 #define PROMPT_COMMANDMODE 0x200
 
-struct prompt;
+/* Prompt create data. */
 struct prompt_create_data {
 	struct cmd_find_state	*fs;
 	const char		*prompt;
@@ -2071,6 +2074,8 @@ struct prompt_create_data {
 	prompt_free_cb		 freecb;
 	void			*data;
 };
+
+/* Prompt draw data. */
 struct prompt_draw_data {
 	struct screen_write_ctx	*ctx;
 	u_int			*cursor_x;
@@ -2083,6 +2088,8 @@ struct prompt_draw_data {
 	u_int			 menu_height;
 	int			 menu_above;
 };
+
+/* Overlay callbacks */
 typedef struct visible_ranges *(*overlay_check_cb)(struct client *, void *,
     u_int, u_int, u_int);
 typedef struct screen *(*overlay_mode_cb)(struct client *, void *, u_int *,
@@ -2091,6 +2098,8 @@ typedef void (*overlay_draw_cb)(struct client *, void *);
 typedef int (*overlay_key_cb)(struct client *, void *, struct key_event *);
 typedef void (*overlay_free_cb)(struct client *, void *);
 typedef void (*overlay_resize_cb)(struct client *, void *);
+
+/* Client connection. */
 struct client {
 	const char		*name;
 	struct tmuxpeer		*peer;
