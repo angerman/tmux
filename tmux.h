@@ -64,6 +64,7 @@ struct options;
 struct options_array_item;
 struct options_entry;
 struct prompt;
+struct window_pane_prompt;
 struct redraw_scene;
 struct redraw_span;
 struct screen_write_citem;
@@ -1330,6 +1331,11 @@ struct window_pane {
 
 	char		*searchstr;
 	int		 searchregex;
+
+	struct prompt	*prompt;
+	struct window_pane_prompt *prompt_data;
+	u_int		 prompt_cx;
+	int		 prompt_top;
 
 	int		 border_gc_set;
 	struct grid_cell border_gc;
@@ -3547,6 +3553,16 @@ int		 window_pane_key(struct window_pane *, struct client *,
 		     struct mouse_event *);
 void		 window_pane_paste(struct window_pane *, key_code, char *,
 		     size_t);
+void		 window_pane_set_prompt(struct window_pane *, struct client *,
+		     struct cmd_find_state *, const char *, const char *,
+		     status_prompt_input_cb, prompt_free_cb, void *, int,
+		     enum prompt_type);
+void		 window_pane_clear_prompt(struct window_pane *);
+int		 window_pane_has_prompt(struct window_pane *);
+void		 window_pane_update_prompt(struct window_pane *, const char *,
+		     const char *);
+enum prompt_key_result window_pane_prompt_key(struct window_pane *,
+		     struct client *, key_code);
 int		 window_pane_is_visible(struct window_pane *);
 int		 window_pane_exited(struct window_pane *);
 u_int		 window_pane_search(struct window_pane *, const char *, int,

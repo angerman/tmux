@@ -1457,6 +1457,7 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 {
 	struct session		*s = c->session;
 	struct cmdq_item	*item;
+	struct window_pane	*wp;
 
 	/* Check the client is good to accept input. */
 	if (s == NULL || (c->flags & CLIENT_UNATTACHEDFLAGS))
@@ -1486,6 +1487,7 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 				return (0);
 			status_message_clear(c);
 		}
+
 		if (c->overlay_key != NULL) {
 			switch (c->overlay_key(c, c->overlay_data, event)) {
 			case 0:
@@ -1495,6 +1497,7 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 				return (0);
 			}
 		}
+
 		server_client_clear_overlay(c);
 		if (c->prompt != NULL) {
 			switch (status_prompt_key(c, event->key)) {
@@ -1503,6 +1506,20 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 				return (0);
 			case PROMPT_KEY_NOT_HANDLED:
 			case PROMPT_KEY_MOVE:
+				break;
+			}
+		}
+
+		wp = s->curw->window->active;
+		if (wp != NULL &&
+		    wp->prompt != NULL &&
+		    !KEYC_IS_MOUSE(event->key)) {
+			switch (window_pane_prompt_key(wp, c, event->key)) {
+			case PROMPT_KEY_HANDLED:
+			case PROMPT_KEY_CLOSE:
+			case PROMPT_KEY_MOVE:
+				return (0);
+			case PROMPT_KEY_NOT_HANDLED:
 				break;
 			}
 		}
@@ -1795,7 +1812,7 @@ server_client_reset_state(struct client *c)
 	struct screen		*s = NULL;
 	struct options		*oo = c->session->options;
 	int			 mode = 0, cursor, flags, pane_mode = 0;
-	u_int			 cx = 0, cy = 0, ox, oy, sx, sy;
+	u_int			 cx = 0, cy = 0, ox, oy, sx, sy, py;
 	struct visible_ranges	*r;
 
 	if (c->flags & (CLIENT_CONTROL|CLIENT_SUSPENDED))
@@ -1827,6 +1844,18 @@ server_client_reset_state(struct client *c)
 	/* Move cursor to pane cursor and offset. */
 	if (c->prompt != NULL) {
 		status_prompt_cursor(c, &cx, &cy);
+	} else if (wp != NULL && wp->prompt != NULL &&
+	    c->overlay_draw == NULL) {
+		tty_window_offset(tty, &ox, &oy, &sx, &sy);
+		if (wp->prompt_top)
+			py = wp->yoff;
+		else
+			py = wp->yoff + wp->sy - 1;
+		cx = wp->xoff + wp->prompt_cx - ox;
+		cy = py - oy;
+		if (status_at_line(c) == 0)
+			cy += status_line_size(c);
+		mode |= MODE_CURSOR;
 	} else if (wp != NULL && c->overlay_draw == NULL) {
 		cursor = 0;
 		pane_mode = wp->base.mode;

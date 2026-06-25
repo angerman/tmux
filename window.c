@@ -78,6 +78,14 @@ RB_GENERATE(windows, window, entry, window_cmp);
 RB_GENERATE(winlinks, winlink, entry, winlink_cmp);
 RB_GENERATE(window_pane_tree, window_pane, tree_entry, window_pane_cmp);
 
+struct window_pane_prompt {
+	struct window_pane	*wp;
+	struct client		*c;
+	status_prompt_input_cb	 inputcb;
+	prompt_free_cb		 freecb;
+	void			*data;
+};
+
 int
 window_cmp(struct window *w1, struct window *w2)
 {
@@ -1155,6 +1163,8 @@ window_pane_destroy(struct window_pane *wp)
 	window_pane_wait_finish(wp);
 	spawn_editor_finish(wp);
 
+	window_pane_clear_prompt(wp);
+
 	window_pane_free_modes(wp);
 	free(wp->searchstr);
 
@@ -1371,11 +1381,144 @@ window_pane_reset_mode(struct window_pane *wp)
 		server_kill_pane(wp);
 }
 
+/* Reset all modes. */
 void
 window_pane_reset_mode_all(struct window_pane *wp)
 {
 	while (!TAILQ_EMPTY(&wp->modes))
 		window_pane_reset_mode(wp);
+}
+
+/* Prompt input callback. */
+static enum prompt_result
+window_pane_prompt_input_callback(void *data, const char *s,
+    enum prompt_key_result key)
+{
+	struct window_pane_prompt	*wpp = data;
+
+	if (wpp->inputcb != NULL)
+		return (wpp->inputcb(wpp->c, wpp->data, s, key));
+	return (PROMPT_CLOSE);
+}
+
+/* Prompt free callback. */
+static void
+window_pane_prompt_free_callback(void *data)
+{
+	struct window_pane_prompt	*wpp = data;
+
+	if (wpp->wp->prompt_data == wpp)
+		wpp->wp->prompt_data = NULL;
+	if (wpp->freecb != NULL)
+		wpp->freecb(wpp->data);
+	free(wpp);
+}
+
+/* Open a prompt owned by a pane, drawn over the pane instead of the status. */
+void
+window_pane_set_prompt(struct window_pane *wp, struct client *c,
+    struct cmd_find_state *fs, const char *msg, const char *input,
+    status_prompt_input_cb inputcb, prompt_free_cb freecb, void *data,
+    int flags, enum prompt_type type)
+{
+	struct session			*s = NULL;
+	struct prompt_create_data	 pd;
+	struct window_pane_prompt	*wpp;
+
+	if (c != NULL)
+		s = c->session;
+
+	window_pane_clear_prompt(wp);
+
+	wpp = xcalloc(1, sizeof *wpp);
+	wpp->wp = wp;
+	wpp->c = c;
+	wpp->inputcb = inputcb;
+	wpp->freecb = freecb;
+	wpp->data = data;
+
+	memset(&pd, 0, sizeof pd);
+	prompt_set_options(&pd, s);
+	pd.fs = fs;
+	pd.prompt = msg;
+	pd.input = input;
+	pd.type = type;
+	pd.flags = flags;
+	pd.inputcb = window_pane_prompt_input_callback;
+	pd.freecb = window_pane_prompt_free_callback;
+	pd.data = wpp;
+
+	wp->prompt = prompt_create(&pd);
+	wp->prompt_data = wpp;
+	wp->flags |= PANE_REDRAW;
+
+	prompt_incremental_start(wp->prompt);
+}
+
+/* Close a pane prompt. */
+void
+window_pane_clear_prompt(struct window_pane *wp)
+{
+	struct prompt	*prompt = wp->prompt;
+
+	if (prompt == NULL)
+		return;
+	wp->prompt = NULL;
+	prompt_free(prompt);
+	wp->flags |= PANE_REDRAW;
+}
+
+/* Does this pane have an open prompt? */
+int
+window_pane_has_prompt(struct window_pane *wp)
+{
+	return (wp->prompt != NULL);
+}
+
+/* Replace the message and input of an open pane prompt. */
+void
+window_pane_update_prompt(struct window_pane *wp, const char *msg,
+    const char *input)
+{
+	if (wp->prompt != NULL) {
+		prompt_update(wp->prompt, msg, input);
+		wp->flags |= PANE_REDRAW;
+	}
+}
+
+/*
+ * Pass a key to a pane prompt. The client is set transiently for the duration
+ * of the key in case the prompt or pane is destroyed by the callback.
+ */
+enum prompt_key_result
+window_pane_prompt_key(struct window_pane *wp, struct client *c, key_code key)
+{
+	struct prompt			*prompt = wp->prompt;
+	struct window_pane_prompt	*wpp = wp->prompt_data;
+	enum prompt_key_result		 result;
+	int				 redraw = 0;
+
+	if (prompt == NULL)
+		return (PROMPT_KEY_NOT_HANDLED);
+
+	if (wpp != NULL)
+		wpp->c = c;
+	result = prompt_key(prompt, key, &redraw);
+	if (wp->prompt_data == wpp && wpp != NULL)
+		wpp->c = NULL;
+
+	/*
+	 * Only an explicit close or the prompt marking itself closed ends it;
+	 * cursor movement and editing keep it open.
+	 */
+	if (wp->prompt == prompt &&
+	    (result == PROMPT_KEY_CLOSE || prompt_closed(prompt)))
+		window_pane_clear_prompt(wp);
+
+	if (redraw || wp->prompt != prompt)
+		wp->flags |= PANE_REDRAW;
+
+	return (result);
 }
 
 static void
