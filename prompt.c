@@ -1305,13 +1305,11 @@ prompt_complete_prefix(char **list, u_int size)
 		return (NULL);
 	out = xstrdup(list[0]);
 	for (i = 1; i < size; i++) {
-		j = strlen(list[i]);
-		if (j > strlen(out))
-			j = strlen(out);
-		for (; j > 0; j--) {
-			if (out[j - 1] != list[i][j - 1])
-				out[j - 1] = '\0';
+		for (j = 0; out[j] != '\0' && list[i][j] != '\0'; j++) {
+			if (out[j] != list[i][j])
+				break;
 		}
+		out[j] = '\0';
 	}
 	return (out);
 }

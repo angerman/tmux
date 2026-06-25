@@ -95,7 +95,7 @@ cmd_command_prompt_exec(struct cmd *self, struct cmdq_item *item)
 	int				 pane = args_has(args, 'P');
 
 	if (pane) {
-		if (wp == NULL || wp->prompt != NULL)
+		if (wp == NULL || window_pane_has_prompt(wp))
 			return (CMD_RETURN_NORMAL);
 	} else if (tc->prompt != NULL)
 		return (CMD_RETURN_NORMAL);
@@ -256,8 +256,10 @@ cmd_command_prompt_callback(struct client *c, void *data, const char *s,
 		return (PROMPT_CONTINUE);
 
 out:
-	if (item != NULL)
+	if (item != NULL) {
+		cdata->item = NULL;
 		cmdq_continue(item);
+	}
 	return (PROMPT_CLOSE);
 }
 
@@ -266,6 +268,11 @@ cmd_command_prompt_free(void *data)
 {
 	struct cmd_command_prompt_cdata *cdata = data;
 	u_int				 i;
+
+	if (cdata->item != NULL) {
+		cmdq_continue(cdata->item);
+		cdata->item = NULL;
+	}
 
 	for (i = 0; i < cdata->count; i++) {
 		free(cdata->prompts[i].prompt);

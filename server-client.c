@@ -1511,8 +1511,14 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 		}
 
 		wp = s->curw->window->active;
+		if (wp == NULL || !window_pane_has_prompt(wp)) {
+			TAILQ_FOREACH(wp, &s->curw->window->panes, entry) {
+				if (window_pane_has_prompt(wp))
+					break;
+			}
+		}
 		if (wp != NULL &&
-		    wp->prompt != NULL &&
+		    window_pane_has_prompt(wp) &&
 		    !KEYC_IS_MOUSE(event->key)) {
 			switch (window_pane_prompt_key(wp, c, event->key)) {
 			case PROMPT_KEY_HANDLED:
@@ -1794,6 +1800,41 @@ out:
 		bufferevent_enable(wp->event, EV_READ);
 }
 
+/* Move cursor for pane prompt. */
+static int
+server_client_prompt_cursor(struct client *c, struct window_pane *wp, int *mode,
+    u_int *cx, u_int *cy)
+{
+	struct tty		*tty = &c->tty;
+	struct visible_ranges	*r;
+	u_int			 ox, oy, sx, sy;
+	int			 px, py;
+
+	if (!window_pane_has_prompt(wp))
+		return (0);
+
+	tty_window_offset(tty, &ox, &oy, &sx, &sy);
+	if (wp->prompt_top)
+		py = wp->yoff;
+	else
+		py = wp->yoff + wp->sy - 1;
+	px = wp->xoff + wp->prompt_cx;
+	if (px < (int)ox || px > (int)(ox + sx) ||
+	    py < (int)oy || py > (int)(oy + sy))
+		return (1);
+
+	*cx = px - ox;
+	*cy = py - oy;
+
+	r = window_visible_ranges(wp, *cx, *cy, 1, NULL);
+	if (window_position_is_visible(r, *cx)) {
+		if (status_at_line(c) == 0)
+			*cy += status_line_size(c);
+		*mode |= MODE_CURSOR;
+	}
+	return (1);
+}
+
 /*
  * Update cursor position and mode settings. The scroll region and attributes
  * are cleared when idle (waiting for an event) as this is the most likely time
@@ -1812,7 +1853,7 @@ server_client_reset_state(struct client *c)
 	struct screen		*s = NULL;
 	struct options		*oo = c->session->options;
 	int			 mode = 0, cursor, flags, pane_mode = 0;
-	u_int			 cx = 0, cy = 0, ox, oy, sx, sy, py;
+	u_int			 cx = 0, cy = 0, ox, oy, sx, sy, prompt = 0;
 	struct visible_ranges	*r;
 
 	if (c->flags & (CLIENT_CONTROL|CLIENT_SUSPENDED))
@@ -1843,43 +1884,35 @@ server_client_reset_state(struct client *c)
 
 	/* Move cursor to pane cursor and offset. */
 	if (c->prompt != NULL) {
+		prompt = 1;
 		status_prompt_cursor(c, &cx, &cy);
-	} else if (wp != NULL && wp->prompt != NULL &&
-	    c->overlay_draw == NULL) {
-		tty_window_offset(tty, &ox, &oy, &sx, &sy);
-		if (wp->prompt_top)
-			py = wp->yoff;
-		else
-			py = wp->yoff + wp->sy - 1;
-		cx = wp->xoff + wp->prompt_cx - ox;
-		cy = py - oy;
-		if (status_at_line(c) == 0)
-			cy += status_line_size(c);
-		mode |= MODE_CURSOR;
 	} else if (wp != NULL && c->overlay_draw == NULL) {
-		cursor = 0;
-		pane_mode = wp->base.mode;
+		prompt = server_client_prompt_cursor(c, wp, &mode, &cx, &cy);
+		if (!prompt) {
+			cursor = 0;
+			pane_mode = wp->base.mode;
 
-		tty_window_offset(tty, &ox, &oy, &sx, &sy);
-		if (wp->xoff + (int)s->cx >= (int)ox &&
-		    wp->xoff + (int)s->cx <= (int)ox + (int)sx &&
-		    wp->yoff + (int)s->cy >= (int)oy &&
-		    wp->yoff + (int)s->cy <= (int)oy + (int)sy) {
-			cursor = 1;
+			tty_window_offset(tty, &ox, &oy, &sx, &sy);
+			if (wp->xoff + (int)s->cx >= (int)ox &&
+			    wp->xoff + (int)s->cx <= (int)ox + (int)sx &&
+			    wp->yoff + (int)s->cy >= (int)oy &&
+			    wp->yoff + (int)s->cy <= (int)oy + (int)sy) {
+				cursor = 1;
 
-			cx = wp->xoff + (int)s->cx - (int)ox;
-			cy = wp->yoff + (int)s->cy - (int)oy;
+				cx = wp->xoff + (int)s->cx - (int)ox;
+				cy = wp->yoff + (int)s->cy - (int)oy;
 
-			r = window_visible_ranges(wp, cx, cy, 1, NULL);
-			if (!window_position_is_visible(r, cx))
-				cursor = 0;
+				r = window_visible_ranges(wp, cx, cy, 1, NULL);
+				if (!window_position_is_visible(r, cx))
+					cursor = 0;
 
-			if (status_at_line(c) == 0)
-				cy += status_line_size(c);
+				if (status_at_line(c) == 0)
+					cy += status_line_size(c);
+			}
+
+			if ((pane_mode & MODE_SYNC) || !cursor)
+				mode &= ~MODE_CURSOR;
 		}
-
-		if ((pane_mode & MODE_SYNC) || !cursor)
-			mode &= ~MODE_CURSOR;
 	} else if (c->overlay_mode == NULL || s == NULL)
 		mode &= ~MODE_CURSOR;
 	if (~pane_mode & MODE_SYNC) {
@@ -1907,7 +1940,7 @@ server_client_reset_state(struct client *c)
 	}
 
 	/* Clear bracketed paste mode if at the prompt. */
-	if (c->overlay_draw == NULL && c->prompt != NULL)
+	if (c->overlay_draw == NULL && prompt)
 		mode &= ~MODE_BRACKETPASTE;
 
 	/* Set the terminal mode and reset attributes. */

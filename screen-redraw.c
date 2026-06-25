@@ -1515,29 +1515,40 @@ redraw_draw_pane_prompt(struct redraw_draw_ctx *dctx, struct window_pane *wp)
 	struct screen		 screen;
 	struct screen_write_ctx	 ctx;
 	struct prompt_draw_data	 pdd;
-	int			 wy;
-	u_int			 line, cy, px;
+	int			 ox = scene->ox, oy = scene->oy;
+	int			 sx = scene->sx, sy = scene->sy;
+	int			 line, cy, px, offset, width, wy;
 
 	if (wp->prompt == NULL || wp->sx == 0 || wp->sy == 0)
 		return;
+
 	if (~dctx->flags & REDRAW_STATUS_TOP) {
 		wp->prompt_top = 0;
-		wy = (int)wp->yoff + (int)wp->sy - 1;
+		wy = wp->yoff + (int)wp->sy - 1;
 	} else {
 		wp->prompt_top = 1;
-		wy = (int)wp->yoff;
+		wy = wp->yoff;
 	}
-	if (wy < (int)scene->oy || (u_int)wy >= scene->oy + scene->sy)
+	if (wy < oy || wy >= oy + sy)
 		return;
-	line = (u_int)wy - scene->oy;
+	line = wy - oy;
 	if (dctx->flags & REDRAW_STATUS_TOP)
 		cy = dctx->status_lines + line;
 	else
 		cy = line;
 
-	if ((u_int)wp->xoff < scene->ox)
+	if (wp->xoff + (int)wp->sx <= ox || wp->xoff >= ox + sx)
 		return;
-	px = (u_int)wp->xoff - scene->ox;
+	if (wp->xoff < ox) {
+		offset = ox - wp->xoff;
+		px = 0;
+	} else {
+		offset = 0;
+		px = wp->xoff - ox;
+	}
+	width = wp->sx - offset;
+	if (px + width > sx)
+		width = sx - px;
 
 	screen_init(&screen, wp->sx, 1, 0);
 	screen_write_start(&ctx, &screen);
@@ -1549,7 +1560,7 @@ redraw_draw_pane_prompt(struct redraw_draw_ctx *dctx, struct window_pane *wp)
 	prompt_draw(wp->prompt, &pdd);
 	screen_write_stop(&ctx);
 
-	tty_draw_line(tty, &screen, 0, 0, wp->sx, px, cy, NULL);
+	tty_draw_line(tty, &screen, 0, offset, width, px, cy, NULL);
 	screen_free(&screen);
 }
 

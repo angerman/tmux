@@ -80,6 +80,7 @@ RB_GENERATE(window_pane_tree, window_pane, tree_entry, window_pane_cmp);
 
 struct window_pane_prompt {
 	struct window_pane	*wp;
+	u_int			 wp_id;
 	struct client		*c;
 	status_prompt_input_cb	 inputcb;
 	prompt_free_cb		 freecb;
@@ -1406,9 +1407,11 @@ static void
 window_pane_prompt_free_callback(void *data)
 {
 	struct window_pane_prompt	*wpp = data;
+	struct window_pane		*wp;
 
-	if (wpp->wp->prompt_data == wpp)
-		wpp->wp->prompt_data = NULL;
+	wp = window_pane_find_by_id(wpp->wp_id);
+	if (wp != NULL && wp->prompt_data == wpp)
+		wp->prompt_data = NULL;
 	if (wpp->freecb != NULL)
 		wpp->freecb(wpp->data);
 	free(wpp);
@@ -1432,6 +1435,7 @@ window_pane_set_prompt(struct window_pane *wp, struct client *c,
 
 	wpp = xcalloc(1, sizeof *wpp);
 	wpp->wp = wp;
+	wpp->wp_id = wp->id;
 	wpp->c = c;
 	wpp->inputcb = inputcb;
 	wpp->freecb = freecb;
@@ -1496,6 +1500,7 @@ window_pane_prompt_key(struct window_pane *wp, struct client *c, key_code key)
 	struct prompt			*prompt = wp->prompt;
 	struct window_pane_prompt	*wpp = wp->prompt_data;
 	enum prompt_key_result		 result;
+	u_int				 wp_id = wp->id;
 	int				 redraw = 0;
 
 	if (prompt == NULL)
@@ -1504,7 +1509,11 @@ window_pane_prompt_key(struct window_pane *wp, struct client *c, key_code key)
 	if (wpp != NULL)
 		wpp->c = c;
 	result = prompt_key(prompt, key, &redraw);
-	if (wp->prompt_data == wpp && wpp != NULL)
+
+	wp = window_pane_find_by_id(wp_id);
+	if (wp == NULL)
+		return (result);
+	if (wpp != NULL && wp->prompt_data == wpp)
 		wpp->c = NULL;
 
 	/*
