@@ -2073,6 +2073,7 @@ typedef void (*prompt_free_cb)(void *);
 #define PROMPT_COMMANDMODE 0x200
 #define PROMPT_ISPANE 0x400
 #define PROMPT_ISMODE 0x800
+#define PROMPT_EDITARROWS 0x1000
 
 /* Prompt create data. */
 struct prompt_create_data {

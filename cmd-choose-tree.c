@@ -88,9 +88,8 @@ const struct cmd_entry cmd_switch_mode_entry = {
 	.name = "switch-mode",
 	.alias = NULL,
 
-	.args = { "F:f:kst:wZ", 0, 1, cmd_choose_tree_args_parse },
-	.usage = "[-kswZ] [-F format] [-f filter] " CMD_TARGET_PANE_USAGE " "
-		 "[command]",
+	.args = { "F:kst:wZ", 0, 1, cmd_choose_tree_args_parse },
+	.usage = "[-kswZ] [-F format] " CMD_TARGET_PANE_USAGE " [command]",
 
 	.target = { 't', CMD_FIND_PANE, 0 },
 

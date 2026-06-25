@@ -1481,14 +1481,6 @@ const struct options_table_entry options_table[] = {
 		  "history when clearing the whole screen."
 	},
 
-	{ .name = "switch-mode-filter-format",
-	  .type = OPTIONS_TABLE_STRING,
-	  .scope = OPTIONS_TABLE_WINDOW|OPTIONS_TABLE_PANE,
-	  .default_str = "#[fill=yellow bg=yellow fg=black]"
-	                 "filter: #{filter}",
-	  .text = "Format of the filter prompt in switch mode."
-	},
-
 	{ .name = "switch-mode-match-style",
 	  .type = OPTIONS_TABLE_STRING,
 	  .scope = OPTIONS_TABLE_WINDOW|OPTIONS_TABLE_PANE,

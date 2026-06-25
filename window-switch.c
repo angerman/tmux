@@ -32,6 +32,8 @@ static void		 window_switch_resize(struct window_mode_entry *, u_int,
 static void		 window_switch_key(struct window_mode_entry *,
 			     struct client *, struct session *,
 			     struct winlink *, key_code, struct mouse_event *);
+static enum prompt_result window_switch_prompt_callback(void *, const char *,
+			     enum prompt_key_result);
 
 #define WINDOW_SWITCH_DEFAULT_COMMAND "switch-client -Zt '%%'"
 
@@ -85,6 +87,8 @@ struct window_switch_modedata {
 
 	enum window_switch_type		  type;
 	char				 *filter;
+	struct prompt			 *prompt;
+	u_int				  prompt_cx;
 
 	struct window_switch_itemdata	**item_list;
 	u_int				  item_size;
@@ -267,14 +271,12 @@ window_switch_draw_screen(struct window_mode_entry *wme)
 	struct options			*oo = wp->options;
 	struct screen_write_ctx		 ctx;
 	struct screen			*s = &data->screen;
-	u_int				 sx = screen_size_x(s), i, j, width;
+	u_int				 sx = screen_size_x(s), i, j;
 	u_int				 sy = screen_size_y(s), visible, idx;
 	struct window_switch_itemdata	*item;
-	struct format_tree		*ft;
-	const char			*format;
-	char				*expanded;
 	struct grid_cell		 mgc, sgc, gc;
 	const struct grid_cell		*dgc = &grid_default_cell;
+	struct prompt_draw_data		 pdd;
 	screen_write_start(&ctx, s);
 	screen_write_clearscreen(&ctx, 8);
 
@@ -315,33 +317,26 @@ window_switch_draw_screen(struct window_mode_entry *wme)
 		}
 	}
 
-	ft = format_create(NULL, NULL, FORMAT_NONE, 0);
-	format_add(ft, "filter", "%s", data->filter);
-	format = options_get_string(oo, "switch-mode-filter-format");
-	expanded = format_expand(ft, format);
-
-	screen_write_cursormove(&ctx, 0, sy - 1, 0);
-	width = format_width(expanded);
-	format_draw(&ctx, &grid_default_cell, sx, expanded, NULL, 0);
-	free(expanded);
-	format_free(ft);
-
-	if (width < sx)
+	if (data->prompt != NULL) {
+		pdd.ctx = &ctx;
+		pdd.cursor_x = &data->prompt_cx;
+		pdd.area_x = 0;
+		pdd.area_width = sx;
+		pdd.prompt_line = sy - 1;
 		s->mode |= MODE_CURSOR;
-	else {
-		s->mode &= ~MODE_CURSOR;
-		width = 0;
+		prompt_draw(data->prompt, &pdd);
+		screen_write_cursormove(&ctx, data->prompt_cx, sy - 1, 0);
 	}
-	screen_write_cursormove(&ctx, width, sy - 1, 0);
 }
 
 static struct screen *
 window_switch_init(struct window_mode_entry *wme,
-    __unused struct cmd_find_state *fs, struct args *args)
+    struct cmd_find_state *fs, struct args *args)
 {
 	struct window_pane		*wp = wme->wp;
 	struct window_switch_modedata	*data;
 	struct screen			*s;
+	struct prompt_create_data	 pd;
 
 	wme->data = data = xcalloc(1, sizeof *data);
 	data->wp = wp;
@@ -351,10 +346,7 @@ window_switch_init(struct window_mode_entry *wme,
 	else
 		data->type = WINDOW_SWITCH_TYPE_SESSION;
 
-	if (args == NULL || !args_has(args, 'f'))
-		data->filter = xstrdup("");
-	else
-		data->filter = xstrdup(args_get(args, 'f'));
+	data->filter = xstrdup("");
 	if (args == NULL || !args_has(args, 'F'))
 		data->format = xstrdup(WINDOW_SWITCH_DEFAULT_FORMAT);
 	else
@@ -363,6 +355,19 @@ window_switch_init(struct window_mode_entry *wme,
 		data->command = xstrdup(WINDOW_SWITCH_DEFAULT_COMMAND);
 	else
 		data->command = xstrdup(args_string(args, 0));
+
+	memset(&pd, 0, sizeof pd);
+	prompt_set_options(&pd, fs->s);
+	pd.fs = fs;
+	pd.prompt = "(search) ";
+	pd.input = "";
+	pd.type = PROMPT_TYPE_SEARCH;
+	pd.flags = PROMPT_INCREMENTAL|PROMPT_NOFORMAT|PROMPT_ISMODE|
+	    PROMPT_EDITARROWS;
+	pd.inputcb = window_switch_prompt_callback;
+	pd.data = data;
+	data->prompt = prompt_create(&pd);
+	prompt_update(data->prompt, "(search) ", data->filter);
 
 	if (!args_has(args, 'Z'))
 		data->zoomed = -1;
@@ -376,6 +381,7 @@ window_switch_init(struct window_mode_entry *wme,
 	screen_init(s, screen_size_x(&wp->base), screen_size_y(&wp->base), 0);
 
 	window_switch_build(data);
+	prompt_incremental_start(data->prompt);
 	window_switch_draw_screen(wme);
 
 	return (s);
@@ -396,6 +402,7 @@ window_switch_free(struct window_mode_entry *wme)
 
 	free(data->matches);
 	free(data->filter);
+	prompt_free(data->prompt);
 	free(data->format);
 	free(data->command);
 	screen_free(&data->screen);
@@ -472,6 +479,29 @@ window_switch_run_command(struct window_switch_modedata *data, struct client *c)
 	return (1);
 }
 
+static enum prompt_result
+window_switch_prompt_callback(void *arg, const char *s,
+    enum prompt_key_result key)
+{
+	struct window_switch_modedata	*data = arg;
+
+	if (key != PROMPT_KEY_HANDLED)
+		return (PROMPT_CONTINUE);
+
+	if (s == NULL)
+		s = "";
+	else if (*s != '\0')
+		s++;
+
+	free(data->filter);
+	data->filter = xstrdup(s);
+	window_switch_build(data);
+	data->current = 0;
+	data->offset = 0;
+
+	return (PROMPT_CONTINUE);
+}
+
 static void
 window_switch_key(struct window_mode_entry *wme, struct client *c,
     __unused struct session *s, __unused struct winlink *wl, key_code key,
@@ -479,14 +509,26 @@ window_switch_key(struct window_mode_entry *wme, struct client *c,
 {
 	struct window_pane		*wp = wme->wp;
 	struct window_switch_modedata	*data = wme->data;
-	struct utf8_data		 ud, *udp;
-	char				*f;
 	u_int				 visible, current = data->current;
-	u_int				 i, x, y, size = data->matches_size;
+	u_int				 x, y, size = data->matches_size;
+	enum prompt_key_result		 result;
+	int				 redraw = 0;
 
 	if (KEYC_IS_MOUSE(key)) {
 		if (m == NULL || cmd_mouse_at(wp, m, &x, &y, 0) != 0)
 			return;
+		if (data->prompt != NULL && screen_size_y(&data->screen) != 0 &&
+		    y == screen_size_y(&data->screen) - 1 &&
+		    MOUSE_BUTTONS(m->b) == MOUSE_BUTTON_1 && !MOUSE_DRAG(m->b) &&
+		    !MOUSE_RELEASE(m->b)) {
+			result = prompt_mouse(data->prompt, x, 0,
+			    screen_size_x(&data->screen), &redraw);
+			if (redraw || result == PROMPT_KEY_HANDLED) {
+				window_switch_draw_screen(wme);
+				wp->flags |= PANE_REDRAW;
+			}
+			return;
+		}
 		switch (key) {
 		case KEYC_WHEELUP_PANE:
 			if (size != 0 && current != 0)
@@ -513,8 +555,19 @@ window_switch_key(struct window_mode_entry *wme, struct client *c,
 	}
 
 	switch (key) {
+	case 'p'|KEYC_CTRL:
+	case 'k'|KEYC_CTRL:
+		key = KEYC_UP;
+		break;
+	case 'n'|KEYC_CTRL:
+	case 'j'|KEYC_CTRL:
+		key = KEYC_DOWN;
+		break;
+	}
+
+	switch (key) {
 	case '\r':
-		if (window_switch_run_command(data, c))
+		if (size == 0 || window_switch_run_command(data, c))
 			window_pane_reset_mode(wp);
 		return;
 	case '\033': /* Escape */
@@ -523,9 +576,23 @@ window_switch_key(struct window_mode_entry *wme, struct client *c,
 	case 'g'|KEYC_CTRL:
 		window_pane_reset_mode(wp);
 		return;
+	}
+
+	if (data->prompt != NULL) {
+		result = prompt_key(data->prompt, key, &redraw);
+		if (redraw) {
+			window_switch_draw_screen(wme);
+			wp->flags |= PANE_REDRAW;
+		}
+		if (result == PROMPT_KEY_HANDLED ||
+		    result == PROMPT_KEY_NOT_HANDLED)
+			return;
+		current = data->current;
+		size = data->matches_size;
+	}
+
+	switch (key) {
 	case KEYC_UP:
-	case 'p'|KEYC_CTRL:
-	case 'k'|KEYC_CTRL:
 		if (size == 0)
 			goto moved;
 		if (current == 0)
@@ -534,8 +601,6 @@ window_switch_key(struct window_mode_entry *wme, struct client *c,
 			window_switch_set_current(data, current - 1);
 		goto moved;
 	case KEYC_DOWN:
-	case 'n'|KEYC_CTRL:
-	case 'j'|KEYC_CTRL:
 		if (size == 0)
 			goto moved;
 		if (current == size - 1)
@@ -561,41 +626,7 @@ window_switch_key(struct window_mode_entry *wme, struct client *c,
 		if (size > 0)
 			window_switch_set_current(data, size - 1);
 		goto moved;
-	case KEYC_BSPACE:
-		udp = utf8_fromcstr(data->filter);
-		for (i = 0; udp[i].size != 0; i++)
-			;
-		if (i != 0)
-			i--;
-		udp[i].size = 0;
-		free(data->filter);
-		data->filter = utf8_tocstr(udp);
-		free(udp);
-		break;
-	case 'u'|KEYC_CTRL:
-		free(data->filter);
-		data->filter = xstrdup("");
-		break;
-	default:
-		if (KEYC_IS_UNICODE(key))
-			utf8_to_data(key, &ud);
-		else {
-			if (key <= 0x1f || key >= 0x7f)
-				return;
-			utf8_set(&ud, key);
-		}
-		xasprintf(&f, "%s%.*s", data->filter, (int)ud.size, ud.data);
-		free(data->filter);
-		data->filter = f;
-		break;
 	}
-
-	window_switch_build(data);
-	data->current = 0;
-	data->offset = 0;
-	window_switch_draw_screen(wme);
-	wp->flags |= PANE_REDRAW;
-	return;
 
 moved:
 	window_switch_draw_screen(wme);
