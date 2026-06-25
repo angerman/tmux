@@ -1090,7 +1090,7 @@ mode_tree_set_prompt(struct mode_tree_data *mtd, struct client *c,
 	pd.prompt = prompt;
 	pd.input = input;
 	pd.type = type;
-	pd.flags = flags;
+	pd.flags = flags|PROMPT_ISMODE;
 	pd.inputcb = mode_tree_prompt_input_callback;
 	pd.freecb = mode_tree_prompt_free_callback;
 	pd.data = mtp;

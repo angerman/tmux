@@ -63,6 +63,42 @@ struct prompt {
 static char	*prompt_complete(struct prompt *, const char *, u_int);
 static void	 prompt_clear_complete(struct prompt *);
 
+/* Get prompt flags as a string. */
+static const char *
+prompt_flags_to_string(int flags)
+{
+	static char	tmp[256];
+
+	*tmp = '\0';
+	if (flags & PROMPT_SINGLE)
+		strlcat(tmp, "SINGLE,", sizeof tmp);
+	if (flags & PROMPT_NUMERIC)
+		strlcat(tmp, "NUMERIC,", sizeof tmp);
+	if (flags & PROMPT_INCREMENTAL)
+		strlcat(tmp, "INCREMENTAL,", sizeof tmp);
+	if (flags & PROMPT_NOFORMAT)
+		strlcat(tmp, "NOFORMAT,", sizeof tmp);
+	if (flags & PROMPT_KEY)
+		strlcat(tmp, "KEY,", sizeof tmp);
+	if (flags & PROMPT_ACCEPT)
+		strlcat(tmp, "ACCEPT,", sizeof tmp);
+	if (flags & PROMPT_QUOTENEXT)
+		strlcat(tmp, "QUOTENEXT,", sizeof tmp);
+	if (flags & PROMPT_BSPACE_EXIT)
+		strlcat(tmp, "BSPACE_EXIT,", sizeof tmp);
+	if (flags & PROMPT_NOFREEZE)
+		strlcat(tmp, "NOFREEZE,", sizeof tmp);
+	if (flags & PROMPT_COMMANDMODE)
+		strlcat(tmp, "COMMANDMODE,", sizeof tmp);
+	if (flags & PROMPT_ISPANE)
+		strlcat(tmp, "ISPANE,", sizeof tmp);
+	if (flags & PROMPT_ISMODE)
+		strlcat(tmp, "ISMODE,", sizeof tmp);
+	if (*tmp != '\0')
+		tmp[strlen(tmp) - 1] = '\0';
+	return (tmp);
+}
+
 /* Set prompt options from session options. */
 void
 prompt_set_options(struct prompt_create_data *pd, struct session *s)
@@ -354,8 +390,10 @@ prompt_draw(struct prompt *pr, struct prompt_draw_data *pd)
 		ft = format_create_defaults(NULL, NULL, NULL, NULL, NULL);
 	tmp = utf8_tocstr(pr->buffer);
 	format_add(ft, "prompt_input", "%s", tmp);
-	prompt = format_expand_time(ft, pr->string);
 	free(tmp);
+	format_add(ft, "prompt_flags", "%s", prompt_flags_to_string(pr->flags));
+	format_add(ft, "prompt_type", "%s", prompt_type_string(pr->type));
+	prompt = format_expand_time(ft, pr->string);
 
 	/*
 	 * Set #{message} to the prompt string and expand message-format.

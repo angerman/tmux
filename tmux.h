@@ -2071,6 +2071,8 @@ typedef void (*prompt_free_cb)(void *);
 #define PROMPT_BSPACE_EXIT 0x80
 #define PROMPT_NOFREEZE 0x100
 #define PROMPT_COMMANDMODE 0x200
+#define PROMPT_ISPANE 0x400
+#define PROMPT_ISMODE 0x800
 
 /* Prompt create data. */
 struct prompt_create_data {

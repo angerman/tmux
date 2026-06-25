@@ -177,6 +177,7 @@ cmd_command_prompt_exec(struct cmd *self, struct cmdq_item *item)
 	if (args_has(args, 'C'))
 		cdata->flags |= PROMPT_NOFREEZE;
 	if (pane) {
+		cdata->flags |= PROMPT_ISPANE;
 		window_pane_set_prompt(wp, tc, target, cdata->prompts[0].prompt,
 		    cdata->prompts[0].input, cmd_command_prompt_callback,
 		    cmd_command_prompt_free, cdata, cdata->flags,
