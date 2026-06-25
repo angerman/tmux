@@ -1080,14 +1080,14 @@ window_tree_command_done(__unused struct cmdq_item *item, void *modedata)
 	return (CMD_RETURN_NORMAL);
 }
 
-static int
+static enum prompt_result
 window_tree_command_callback(struct client *c, void *modedata, const char *s,
-    __unused int flags)
+    __unused enum prompt_key_result key)
 {
 	struct window_tree_modedata	*data = modedata;
 
 	if (s == NULL || *s == '\0' || data->dead)
-		return (0);
+		return (PROMPT_CLOSE);
 
 	data->entered = s;
 	mode_tree_each_tagged(data->data, window_tree_command_each, c,
@@ -1097,7 +1097,7 @@ window_tree_command_callback(struct client *c, void *modedata, const char *s,
 	data->references++;
 	cmdq_append(c, cmdq_get_callback(window_tree_command_done, data));
 
-	return (0);
+	return (PROMPT_CLOSE);
 }
 
 static void
@@ -1139,17 +1139,17 @@ window_tree_kill_each(__unused void *modedata, void *itemdata,
 	}
 }
 
-static int
+static enum prompt_result
 window_tree_kill_current_callback(struct client *c, void *modedata,
-    const char *s, __unused int flags)
+    const char *s, __unused enum prompt_key_result key)
 {
 	struct window_tree_modedata	*data = modedata;
 	struct mode_tree_data		*mtd = data->data;
 
 	if (s == NULL || *s == '\0' || data->dead)
-		return (0);
+		return (PROMPT_CLOSE);
 	if (tolower((u_char) s[0]) != 'y' || s[1] != '\0')
-		return (0);
+		return (PROMPT_CLOSE);
 
 	window_tree_kill_each(data, mode_tree_get_current(mtd), c, KEYC_NONE);
 	server_renumber_all();
@@ -1157,20 +1157,20 @@ window_tree_kill_current_callback(struct client *c, void *modedata,
 	data->references++;
 	cmdq_append(c, cmdq_get_callback(window_tree_command_done, data));
 
-	return (0);
+	return (PROMPT_CLOSE);
 }
 
-static int
+static enum prompt_result
 window_tree_kill_tagged_callback(struct client *c, void *modedata,
-    const char *s, __unused int flags)
+    const char *s, __unused enum prompt_key_result key)
 {
 	struct window_tree_modedata	*data = modedata;
 	struct mode_tree_data		*mtd = data->data;
 
 	if (s == NULL || *s == '\0' || data->dead)
-		return (0);
+		return (PROMPT_CLOSE);
 	if (tolower((u_char) s[0]) != 'y' || s[1] != '\0')
-		return (0);
+		return (PROMPT_CLOSE);
 
 	mode_tree_each_tagged(mtd, window_tree_kill_each, c, KEYC_NONE, 1);
 	server_renumber_all();
@@ -1178,7 +1178,7 @@ window_tree_kill_tagged_callback(struct client *c, void *modedata,
 	data->references++;
 	cmdq_append(c, cmdq_get_callback(window_tree_command_done, data));
 
-	return (0);
+	return (PROMPT_CLOSE);
 }
 
 static key_code
@@ -1317,10 +1317,11 @@ again:
 		if (prompt == NULL)
 			break;
 		data->references++;
-		status_prompt_set(c, NULL, prompt, "",
+		mode_tree_set_prompt(data->data, c, prompt, "",
+		    PROMPT_TYPE_COMMAND,
+		    PROMPT_SINGLE|PROMPT_NOFORMAT|data->prompt_flags,
 		    window_tree_kill_current_callback, window_tree_command_free,
-		    data, PROMPT_SINGLE|PROMPT_NOFORMAT|data->prompt_flags,
-		    PROMPT_TYPE_COMMAND);
+		    data);
 		free(prompt);
 		break;
 	case 'X':
@@ -1329,10 +1330,11 @@ again:
 			break;
 		xasprintf(&prompt, "Kill %u tagged? ", tagged);
 		data->references++;
-		status_prompt_set(c, NULL, prompt, "",
+		mode_tree_set_prompt(data->data, c, prompt, "",
+		    PROMPT_TYPE_COMMAND,
+		    PROMPT_SINGLE|PROMPT_NOFORMAT|data->prompt_flags,
 		    window_tree_kill_tagged_callback, window_tree_command_free,
-		    data, PROMPT_SINGLE|PROMPT_NOFORMAT|data->prompt_flags,
-		    PROMPT_TYPE_COMMAND);
+		    data);
 		free(prompt);
 		break;
 	case ':':
@@ -1342,9 +1344,10 @@ again:
 		else
 			xasprintf(&prompt, "(current) ");
 		data->references++;
-		status_prompt_set(c, NULL, prompt, "",
+		mode_tree_set_prompt(data->data, c, prompt, "",
+		    PROMPT_TYPE_COMMAND, PROMPT_NOFORMAT,
 		    window_tree_command_callback, window_tree_command_free,
-		    data, PROMPT_NOFORMAT, PROMPT_TYPE_COMMAND);
+		    data);
 		free(prompt);
 		break;
 	case '\r':

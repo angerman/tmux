@@ -185,6 +185,8 @@ dist_tmux_SOURCES = \
 	paste.c \
 	popup.c \
 	proc.c \
+	prompt.c \
+	prompt-history.c \
 	regsub.c \
 	resize.c \
 	screen-redraw.c \
