@@ -1513,19 +1513,22 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 		wp = s->curw->window->active;
 		if (wp == NULL || !window_pane_has_prompt(wp)) {
 			TAILQ_FOREACH(wp, &s->curw->window->panes, entry) {
-				if (window_pane_has_prompt(wp))
+				if (window_pane_has_prompt(wp) &&
+				    window_pane_is_visible(wp))
 					break;
 			}
 		}
 		if (wp != NULL &&
 		    window_pane_has_prompt(wp) &&
-		    !KEYC_IS_MOUSE(event->key)) {
+		    window_pane_is_visible(wp)) {
 			switch (window_pane_prompt_key(wp, c, event->key)) {
 			case PROMPT_KEY_HANDLED:
 			case PROMPT_KEY_CLOSE:
 			case PROMPT_KEY_MOVE:
 				return (0);
 			case PROMPT_KEY_NOT_HANDLED:
+				if (KEYC_IS_MOUSE(event->key))
+					return (0);
 				break;
 			}
 		}
@@ -1812,9 +1815,10 @@ server_client_prompt_cursor(struct client *c, struct window_pane *wp, int *mode,
 
 	if (!window_pane_has_prompt(wp))
 		return (0);
+	*mode &= ~MODE_CURSOR;
 
 	tty_window_offset(tty, &ox, &oy, &sx, &sy);
-	if (wp->prompt_top)
+	if (status_at_line(c) == 0)
 		py = wp->yoff;
 	else
 		py = wp->yoff + wp->sy - 1;

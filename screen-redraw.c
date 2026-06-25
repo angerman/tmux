@@ -1522,13 +1522,10 @@ redraw_draw_pane_prompt(struct redraw_draw_ctx *dctx, struct window_pane *wp)
 	if (wp->prompt == NULL || wp->sx == 0 || wp->sy == 0)
 		return;
 
-	if (~dctx->flags & REDRAW_STATUS_TOP) {
-		wp->prompt_top = 0;
+	if (~dctx->flags & REDRAW_STATUS_TOP)
 		wy = wp->yoff + (int)wp->sy - 1;
-	} else {
-		wp->prompt_top = 1;
+	else
 		wy = wp->yoff;
-	}
 	if (wy < oy || wy >= oy + sy)
 		return;
 	line = wy - oy;

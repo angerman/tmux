@@ -1335,7 +1335,6 @@ struct window_pane {
 	struct prompt	*prompt;
 	struct window_pane_prompt *prompt_data;
 	u_int		 prompt_cx;
-	int		 prompt_top;
 
 	int		 border_gc_set;
 	struct grid_cell border_gc;

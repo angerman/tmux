@@ -79,7 +79,6 @@ RB_GENERATE(winlinks, winlink, entry, winlink_cmp);
 RB_GENERATE(window_pane_tree, window_pane, tree_entry, window_pane_cmp);
 
 struct window_pane_prompt {
-	struct window_pane	*wp;
 	u_int			 wp_id;
 	struct client		*c;
 	status_prompt_input_cb	 inputcb;
@@ -1434,7 +1433,6 @@ window_pane_set_prompt(struct window_pane *wp, struct client *c,
 	window_pane_clear_prompt(wp);
 
 	wpp = xcalloc(1, sizeof *wpp);
-	wpp->wp = wp;
 	wpp->wp_id = wp->id;
 	wpp->c = c;
 	wpp->inputcb = inputcb;
