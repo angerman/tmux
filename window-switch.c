@@ -327,6 +327,7 @@ window_switch_draw_screen(struct window_mode_entry *wme)
 		prompt_draw(data->prompt, &pdd);
 		screen_write_cursormove(&ctx, data->prompt_cx, sy - 1, 0);
 	}
+	screen_write_stop(&ctx);
 }
 
 static struct screen *
@@ -567,7 +568,7 @@ window_switch_key(struct window_mode_entry *wme, struct client *c,
 
 	switch (key) {
 	case '\r':
-		if (size == 0 || window_switch_run_command(data, c))
+		if (window_switch_run_command(data, c))
 			window_pane_reset_mode(wp);
 		return;
 	case '\033': /* Escape */

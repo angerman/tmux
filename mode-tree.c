@@ -1078,6 +1078,7 @@ mode_tree_set_prompt(struct mode_tree_data *mtd, struct client *c,
 
 	mtp = xcalloc(1, sizeof *mtp);
 	mtp->mtd = mtd;
+	mtp->c = c;
 	mtp->inputcb = inputcb;
 	mtp->freecb = freecb;
 	mtp->data = data;
