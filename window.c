@@ -1493,12 +1493,13 @@ window_pane_update_prompt(struct window_pane *wp, const char *msg,
  * of the key in case the prompt or pane is destroyed by the callback.
  */
 enum prompt_key_result
-window_pane_prompt_key(struct window_pane *wp, struct client *c, key_code key)
+window_pane_prompt_key(struct window_pane *wp, struct client *c, key_code key,
+    struct mouse_event *m)
 {
 	struct prompt			*prompt = wp->prompt;
 	struct window_pane_prompt	*wpp = wp->prompt_data;
 	enum prompt_key_result		 result;
-	u_int				 wp_id = wp->id;
+	u_int				 wp_id = wp->id, x, y, py;
 	int				 redraw = 0;
 
 	if (prompt == NULL)
@@ -1506,7 +1507,26 @@ window_pane_prompt_key(struct window_pane *wp, struct client *c, key_code key)
 
 	if (wpp != NULL)
 		wpp->c = c;
-	result = prompt_key(prompt, key, &redraw);
+	if (KEYC_IS_MOUSE(key)) {
+		if (m == NULL ||
+		    MOUSE_BUTTONS(m->b) != MOUSE_BUTTON_1 ||
+		    MOUSE_DRAG(m->b) ||
+		    MOUSE_RELEASE(m->b) ||
+		    cmd_mouse_at(wp, m, &x, &y, 0) != 0)
+			result = PROMPT_KEY_NOT_HANDLED;
+		else {
+			if (c != NULL && status_at_line(c) == 0)
+				py = 0;
+			else
+				py = wp->sy - 1;
+			if (y == py) {
+				result = prompt_mouse(prompt, x, 0, wp->sx,
+				    &redraw);
+			} else
+				result = PROMPT_KEY_NOT_HANDLED;
+		}
+	} else
+		result = prompt_key(prompt, key, &redraw);
 
 	wp = window_pane_find_by_id(wp_id);
 	if (wp == NULL)

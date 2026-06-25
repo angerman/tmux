@@ -3201,7 +3201,8 @@ void	 status_prompt_set(struct client *, struct cmd_find_state *,
 void	 status_prompt_clear(struct client *);
 int	 status_prompt_redraw(struct client *);
 void	 status_prompt_cursor(struct client *, u_int *, u_int *);
-enum prompt_key_result status_prompt_key(struct client *, key_code);
+enum prompt_key_result status_prompt_key(struct client *, key_code,
+	     struct mouse_event *);
 void	 status_prompt_update(struct client *, const char *, const char *);
 
 /* prompt.c */
@@ -3211,6 +3212,8 @@ void	 prompt_free(struct prompt *);
 void	 prompt_incremental_start(struct prompt *);
 void	 prompt_draw(struct prompt *, struct prompt_draw_data *);
 enum prompt_key_result prompt_key(struct prompt *, key_code, int *);
+enum prompt_key_result prompt_mouse(struct prompt *, u_int, u_int, u_int,
+	     int *);
 void	 prompt_update(struct prompt *, const char *, const char *);
 int	 prompt_closed(struct prompt *);
 enum prompt_type prompt_type(const char *);
@@ -3563,7 +3566,7 @@ int		 window_pane_has_prompt(struct window_pane *);
 void		 window_pane_update_prompt(struct window_pane *, const char *,
 		     const char *);
 enum prompt_key_result window_pane_prompt_key(struct window_pane *,
-		     struct client *, key_code);
+		     struct client *, key_code, struct mouse_event *);
 int		 window_pane_is_visible(struct window_pane *);
 int		 window_pane_exited(struct window_pane *);
 u_int		 window_pane_search(struct window_pane *, const char *, int,

@@ -62,6 +62,9 @@ struct prompt {
 
 static char	*prompt_complete(struct prompt *, const char *, u_int);
 static void	 prompt_clear_complete(struct prompt *);
+static char	*prompt_expand(struct prompt *);
+static int	 prompt_replace_complete(struct prompt *, const char *);
+static u_int	 prompt_width(struct prompt *, u_int);
 
 /* Get prompt flags as a string. */
 static const char *
@@ -357,6 +360,92 @@ prompt_draw_complete(struct prompt *pr, struct screen_write_ctx *ctx, u_int ax,
 	free(ud);
 }
 
+/* Expand prompt string using the current input. */
+static char *
+prompt_expand(struct prompt *pr)
+{
+	struct format_tree	*ft;
+	char			*expanded, *prompt, *tmp;
+
+	if (cmd_find_valid_state(&pr->state))
+		ft = format_create_from_state(NULL, NULL, &pr->state);
+	else
+		ft = format_create_defaults(NULL, NULL, NULL, NULL, NULL);
+	tmp = utf8_tocstr(pr->buffer);
+	format_add(ft, "prompt_input", "%s", tmp);
+	free(tmp);
+
+	format_add(ft, "prompt_flags", "%s", prompt_flags_to_string(pr->flags));
+	format_add(ft, "prompt_type", "%s", prompt_type_string(pr->type));
+	prompt = format_expand_time(ft, pr->string);
+	format_add(ft, "message", "%s", prompt);
+	if (pr->flags & PROMPT_COMMANDMODE)
+		format_add(ft, "command_prompt", "1");
+	else
+		format_add(ft, "command_prompt", "0");
+	expanded = format_expand_time(ft, pr->message_format);
+	free(prompt);
+	format_free(ft);
+	return (expanded);
+}
+
+/* Work out the width used by the prompt string. */
+static u_int
+prompt_width(struct prompt *pr, u_int aw)
+{
+	char	*expanded;
+	u_int	 start;
+
+	expanded = prompt_expand(pr);
+	start = format_width(expanded);
+	if (start > aw)
+		start = aw;
+	free(expanded);
+	return (start);
+}
+
+/* Choose a completion from a mouse position. */
+static enum prompt_key_result
+prompt_mouse_complete(struct prompt *pr, u_int x, u_int cx, u_int ax, u_int aw,
+    int *redraw)
+{
+	char	*replace;
+	u_int	 avail, clicked, end, i, start, width;
+
+	if (pr->complete_display == NULL || pr->complete_size == 0)
+		return (PROMPT_KEY_NOT_HANDLED);
+	if (pr->index != utf8_strlen(pr->buffer))
+		return (PROMPT_KEY_NOT_HANDLED);
+	if (cx < ax || cx - ax >= aw || x < cx)
+		return (PROMPT_KEY_NOT_HANDLED);
+
+	avail = aw - (cx - ax);
+	clicked = x - cx;
+	width = utf8_cstrwidth(pr->complete_display);
+	if (width > avail)
+		width = avail;
+	if (clicked >= width)
+		return (PROMPT_KEY_NOT_HANDLED);
+
+	end = 0;
+	for (i = 0; i < pr->complete_size; i++) {
+		start = end + 1;
+		end = start + utf8_cstrwidth(pr->complete_list[i]);
+		if (clicked < start || clicked >= end)
+			continue;
+
+		xasprintf(&replace, "%s ", pr->complete_list[i]);
+		if (prompt_replace_complete(pr, replace)) {
+			prompt_clear_complete(pr);
+			if (redraw != NULL)
+				*redraw = 1;
+		}
+		free(replace);
+		return (PROMPT_KEY_HANDLED);
+	}
+	return (PROMPT_KEY_HANDLED);
+}
+
 /* Draw prompt. */
 void
 prompt_draw(struct prompt *pr, struct prompt_draw_data *pd)
@@ -365,11 +454,10 @@ prompt_draw(struct prompt *pr, struct prompt_draw_data *pd)
 	struct screen		*s = ctx->s;
 	u_int			 ax = pd->area_x, py = pd->prompt_line;
 	u_int			 aw = pd->area_width, *cx = pd->cursor_x;
-	struct format_tree	*ft;
 	struct grid_cell	 gc;
 	u_int			 i, offset, left, start, width;
 	u_int			 pcursor, pwidth;
-	char			*expanded, *prompt, *tmp;
+	char			*expanded;
 
 	/* Choose the cursor colour and style for this prompt. */
 	if (pr->flags & PROMPT_COMMANDMODE) {
@@ -383,30 +471,7 @@ prompt_draw(struct prompt *pr, struct prompt_draw_data *pd)
 	}
 	s->default_ccolour = pr->ccolour;
 
-	/* Expand the prompt itself. */
-	if (cmd_find_valid_state(&pr->state))
-		ft = format_create_from_state(NULL, NULL, &pr->state);
-	else
-		ft = format_create_defaults(NULL, NULL, NULL, NULL, NULL);
-	tmp = utf8_tocstr(pr->buffer);
-	format_add(ft, "prompt_input", "%s", tmp);
-	free(tmp);
-	format_add(ft, "prompt_flags", "%s", prompt_flags_to_string(pr->flags));
-	format_add(ft, "prompt_type", "%s", prompt_type_string(pr->type));
-	prompt = format_expand_time(ft, pr->string);
-
-	/*
-	 * Set #{message} to the prompt string and expand message-format.
-	 * format_draw handles fill, alignment, and decorations in one call.
-	 */
-	format_add(ft, "message", "%s", prompt);
-	if (pr->flags & PROMPT_COMMANDMODE)
-		format_add(ft, "command_prompt", "1");
-	else
-		format_add(ft, "command_prompt", "0");
-	expanded = format_expand_time(ft, pr->message_format);
-	free(prompt);
-
+	expanded = prompt_expand(pr);
 	start = format_width(expanded);
 	if (start > aw)
 		start = aw;
@@ -415,9 +480,7 @@ prompt_draw(struct prompt *pr, struct prompt_draw_data *pd)
 	screen_write_cursormove(ctx, ax, py, 0);
 	format_draw(ctx, &gc, aw, expanded, NULL, 0);
 	screen_write_cursormove(ctx, ax + start, py, 0);
-
 	free(expanded);
-	format_free(ft);
 
 	left = aw - start;
 	if (left == 0)
@@ -452,6 +515,65 @@ prompt_draw(struct prompt *pr, struct prompt_draw_data *pd)
 	prompt_redraw_quote(pr, pcursor, ctx, offset, pwidth, &width, &gc);
 
 	prompt_draw_complete(pr, ctx, ax, aw, *cx, py, &gc);
+}
+
+/* Move cursor in prompt from a mouse position. */
+enum prompt_key_result
+prompt_mouse(struct prompt *pr, u_int x, u_int ax, u_int aw, int *redraw)
+{
+	struct utf8_data	*ud;
+	enum prompt_key_result	 result;
+	u_int			 cx, start, left, pcursor, pwidth, offset, width;
+	u_int			 target;
+	size_t			 idx;
+
+	if (x < ax || x >= ax + aw)
+		return (PROMPT_KEY_NOT_HANDLED);
+	if (pr->flags & PROMPT_INCREMENTAL)
+		return (PROMPT_KEY_HANDLED);
+
+	start = prompt_width(pr, aw);
+	left = aw - start;
+	if (left == 0)
+		return (PROMPT_KEY_HANDLED);
+
+	pcursor = utf8_strwidth(pr->buffer, pr->index);
+	pwidth = utf8_strwidth(pr->buffer, -1);
+	if (pr->flags & PROMPT_QUOTENEXT)
+		pwidth++;
+	if (pcursor >= left)
+		offset = (pcursor - left) + 1;
+	else
+		offset = 0;
+
+	cx = ax + start + pcursor - offset;
+	result = prompt_mouse_complete(pr, x, cx, ax, aw, redraw);
+	if (result != PROMPT_KEY_NOT_HANDLED)
+		return (result);
+
+	if (x <= ax + start)
+		target = offset;
+	else
+		target = offset + x - (ax + start);
+	if (target > pwidth)
+		target = pwidth;
+
+	width = 0;
+	for (idx = 0; pr->buffer[idx].size != 0; idx++) {
+		ud = &pr->buffer[idx];
+		if (width >= target)
+			break;
+		width += ud->width;
+	}
+	if (idx == pr->index)
+		return (PROMPT_KEY_HANDLED);
+
+	pr->index = idx;
+	prompt_clear_complete(pr);
+	if (redraw != NULL)
+		*redraw = 1;
+
+	return (PROMPT_KEY_HANDLED);
 }
 
 /* Is this a separator? */

@@ -1423,7 +1423,7 @@ mode_tree_key(struct mode_tree_data *mtd, struct client *c, key_code *key,
 {
 	struct mode_tree_line	*line;
 	struct mode_tree_item	*current, *parent, *mti;
-	u_int			 i, x, y;
+	u_int			 i, x, y, py, sx;
 	int			 choice, preview;
 	enum prompt_key_result	 result;
 	int			 redraw;
@@ -1438,10 +1438,30 @@ mode_tree_key(struct mode_tree_data *mtd, struct client *c, key_code *key,
 	if (mtd->prompt != NULL) {
 		redraw = 0;
 		prompt = mtd->prompt;
+
 		mtp = mtd->prompt_data;
 		if (mtp != NULL)
 			mtp->c = c;
-		result = prompt_key(prompt, *key, &redraw);
+		if (KEYC_IS_MOUSE(*key)) {
+			if (m == NULL ||
+			    MOUSE_BUTTONS(m->b) != MOUSE_BUTTON_1 ||
+			    MOUSE_DRAG(m->b) || MOUSE_RELEASE(m->b) ||
+			    cmd_mouse_at(mtd->wp, m, &x, &y, 0) != 0)
+				result = PROMPT_KEY_NOT_HANDLED;
+			else {
+				sx = screen_size_x(&mtd->screen);
+				if (mtd->prompt_top)
+					py = 0;
+				else
+					py = screen_size_y(&mtd->screen) - 1;
+				if (y == py) {
+					result = prompt_mouse(prompt, x, 0, sx,
+					    &redraw);
+				} else
+					result = PROMPT_KEY_NOT_HANDLED;
+			}
+		} else
+			result = prompt_key(prompt, *key, &redraw);
 		if (mtd->prompt_data == mtp && mtp != NULL)
 			mtp->c = NULL;
 

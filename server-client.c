@@ -1500,7 +1500,7 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 
 		server_client_clear_overlay(c);
 		if (c->prompt != NULL) {
-			switch (status_prompt_key(c, event->key)) {
+			switch (status_prompt_key(c, event->key, &event->m)) {
 			case PROMPT_KEY_HANDLED:
 			case PROMPT_KEY_CLOSE:
 				return (0);
@@ -1521,7 +1521,7 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 		if (wp != NULL &&
 		    window_pane_has_prompt(wp) &&
 		    window_pane_is_visible(wp)) {
-			switch (window_pane_prompt_key(wp, c, event->key)) {
+			switch (window_pane_prompt_key(wp, c, event->key, &event->m)) {
 			case PROMPT_KEY_HANDLED:
 			case PROMPT_KEY_CLOSE:
 			case PROMPT_KEY_MOVE:

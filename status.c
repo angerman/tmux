@@ -564,7 +564,7 @@ status_prompt_accept(__unused struct cmdq_item *item, void *data)
 	struct client	*c = data;
 
 	if (c->prompt != NULL)
-		status_prompt_key(c, 'y');
+		status_prompt_key(c, 'y', NULL);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -707,12 +707,21 @@ status_prompt_cursor(struct client *c, u_int *cx, u_int *cy)
 
 /* Handle keys in prompt. */
 enum prompt_key_result
-status_prompt_key(struct client *c, key_code key)
+status_prompt_key(struct client *c, key_code key, struct mouse_event *m)
 {
 	enum prompt_key_result	result;
+	u_int			ax, aw;
 	int			redraw = 0;
 
-	result = prompt_key(c->prompt, key, &redraw);
+	if (KEYC_IS_MOUSE(key)) {
+		if (m == NULL || MOUSE_BUTTONS(m->b) != MOUSE_BUTTON_1 ||
+		    MOUSE_DRAG(m->b) || MOUSE_RELEASE(m->b) ||
+		    m->y != status_prompt_screen_line(c))
+			return (PROMPT_KEY_NOT_HANDLED);
+		status_message_area(c, &ax, &aw);
+		result = prompt_mouse(c->prompt, m->x, ax, aw, &redraw);
+	} else
+		result = prompt_key(c->prompt, key, &redraw);
 	if (redraw && c->prompt != NULL)
 		c->flags |= CLIENT_REDRAWSTATUS;
 	if (c->prompt != NULL && prompt_closed(c->prompt))
