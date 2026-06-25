@@ -41,7 +41,8 @@ static enum prompt_result window_switch_prompt_callback(void *, const char *,
 	"#{?window_format," \
 		"#{window_name} " \
 		"#[dim]#{session_name}:#{window_index}#{window_flags}#[default] " \
-		"#[dim]#{pane_current_command}#[default] #[dim]#{pane_title}#[default]" \
+		"#[dim]#{pane_current_command}#[default] " \
+	        "#[dim]#{?#{!=:#{pane_title},#{host_short}},#{pane_title},}#[default]" \
 	"," \
 		"#{session_name} " \
 		"#[dim]#{session_windows} windows#[default] " \
